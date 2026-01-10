@@ -180,4 +180,4 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-./flask_chatbot_student_assitants/models/*
+*.gguf
