@@ -2,27 +2,37 @@ from flask import Flask, request
 from llama_cpp import Llama
 
 
-
+"""
 llm = Llama.from_pretrained(
 	repo_id="hugging-quants/Llama-3.2-1B-Instruct-Q8_0-GGUF",
 	filename="llama-3.2-1b-instruct-q8_0.gguf",
 )
+"""
 
+llm = Llama(model_path="./models/llama-3.2-1b-instruct-q8_0.gguf")
 
+"""
 intent_classifier = Llama.from_pretrained(
 	repo_id="mradermacher/Qwen-3B-Intent-Microplan-v2-i1-GGUF",
 	filename="Qwen-3B-Intent-Microplan-v2.i1-Q6_K.gguf",
 )
+"""
+
+intent_classifier = Llama(model_path="./models/Qwen-3B-Intent-Microplan-v2.i1-Q6_K.gguf")
 
 
-import sqlite3
-con = sqlite3.connect("tutorial.db")
+
+last_message = ""
 
 app = Flask(__name__)
 
 @app.route("/")
 def hello_world():
     return "Hello world"
+
+@app.route("/back", methods=["GET"])
+def get_last_message():
+    return last_message
 
 @app.route("/ask", methods=['POST'])
 def answer_ask():
@@ -46,6 +56,7 @@ def answer_ask():
             }
         ]
     )
+    last_message = f"The intent is : {intent["choices"][0]["message"]["content"]}\nMy answer is : {answer["choices"][0]["message"]["content"]}"
     return f"The intent is : {intent["choices"][0]["message"]["content"]}\nMy answer is : {answer["choices"][0]["message"]["content"]}"
 
 

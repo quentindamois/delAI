@@ -38,7 +38,8 @@ async def handle_greeting(ctx: ActivityContext[MessageActivity]) -> None:
 async def handle_message(ctx: ActivityContext[MessageActivity]):
    
     await ctx.reply(TypingActivityInput())
-    responce = requests.post("http://localhost:5000/ask", data=dict(user_input=ctx.activity.text, user_name=ctx.activity.from_.name))
+    #await ctx.send(f"I cannot connect to the flask app.")
+    responce = requests.post("http://flask_app_llm:5000/ask", data=dict(user_input=ctx.activity.text, user_name=ctx.activity.from_.name), timeout=120)
     if responce.status_code == 200:
         await ctx.send(responce.text)
     else:
