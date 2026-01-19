@@ -182,3 +182,4 @@ cython_debug/
 .cursorindexingignore
 
 *.gguf
+*.env
