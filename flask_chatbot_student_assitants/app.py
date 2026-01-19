@@ -16,11 +16,10 @@ llm = Llama(model_path="./models/llama-3.2-1b-instruct-q8_0.gguf")
 
 
 keyword_dictionnary = {
-        "evaluation_form":{"verb":["evaluate", "give"], "adj":["end of semester", "end of course", "mid semester", "end of year"], "noun":["returns", "feedback", "opinions", "advice", "class"]},
-        "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]},
-        "send_email":{"verb":["write", "email", "ask about"], "noun":["teacher", "email"]}
-    }
-
+    "send_email":{"verb":["write", "email", "ask about"], "noun":["teacher", "email"]},
+    "evaluation_form":{"verb":["evaluate", "give"], "adj":["end of semester", "end of course", "mid semester", "end of year"], "noun":["returns", "feedback", "opinions", "advice", "class"]},
+    "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]}
+}
 
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"
 
