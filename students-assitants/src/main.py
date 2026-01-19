@@ -1,76 +1,107 @@
 import asyncio
-import re
-#from llama_cpp import Llama
-import requests
+import os
+
+import discord
+import httpx
 from microsoft_teams.api import MessageActivity, TypingActivityInput
 from microsoft_teams.apps import ActivityContext, App
 from microsoft_teams.devtools import DevToolsPlugin
 
 
-
-"""
-llm = Llama.from_pretrained(
-	repo_id="hugging-quants/Llama-3.2-1B-Instruct-Q8_0-GGUF",
-	filename="llama-3.2-1b-instruct-q8_0.gguf",
-)
-
-
-intent_classifier = Llama.from_pretrained(
-	repo_id="mradermacher/Qwen-3B-Intent-Microplan-v2-i1-GGUF",
-	filename="Qwen-3B-Intent-Microplan-v2.i1-Q6_K.gguf",
-)
-"""
-
+LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://flask_app_llm:5000/ask")
 
 app = App(plugins=[DevToolsPlugin()])
 
+discord_intents = discord.Intents.default()
+discord_intents.message_content = True
+discord_client = discord.Client(intents=discord_intents)
 
-"""Handle greeting messages."""
-"""
-@app.on_message_pattern(re.compile(r"hello|hi|greetings"))
-async def handle_greeting(ctx: ActivityContext[MessageActivity]) -> None:
-    
-    await ctx.send("Hello! How can I assist you today?")
-"""
-"""Handle message activities using the new generated handler system."""
+
+async def fetch_llm_response(message_text: str, user_name: str) -> str:
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            LLM_ENDPOINT,
+            data={"user_input": message_text, "user_name": user_name},
+        )
+        response.raise_for_status()
+        return response.text
+
 
 @app.on_message
 async def handle_message(ctx: ActivityContext[MessageActivity]):
-   
     await ctx.reply(TypingActivityInput())
-    #await ctx.send(f"I cannot connect to the flask app.")
-    responce = requests.post("http://flask_app_llm:5000/ask", data=dict(user_input=ctx.activity.text, user_name=ctx.activity.from_.name), timeout=120)
-    if responce.status_code == 200:
-        await ctx.send(responce.text)
-    else:
-        await ctx.send(f"I cannot connect to the flask app.\n{responce.status_code}")
-"""
-async def handle_message(ctx: ActivityContext[MessageActivity]):
-   
-    await ctx.reply(TypingActivityInput())
-    intent = intent_classifier.create_chat_completion(
-        messages = [
-            {"role": "system", "content": "Give the intent of this message between the following : 'send email' for sending an email to a teacher in order to ask a question, 'ask opinion' send a form to students to evaluate and ask their opinions on one ore more courses, 'ask to form group' ask the student to form groups for a project or a presentation, 'none' if it doesn't correspond to the other."},
-            {
-                "role": "user",
-                "content": ctx.activity.text
-            }
-        ]
-    )
-    answer = llm.create_chat_completion(
-        messages = [
-            {"role": "system", "content": f"You are an assistant who help student and teacher interacting togethers. You only speak english. The intent of the user is {intent["choices"][0]["message"]["content"]}. The student can ask you to send email to the teacher to ask question, you can send form to students to ask their opinions on one or more course, the teachers can ask you to send a form to students to form group for project or presentation."},
-            {
-                "role": "user",
-                "content": ctx.activity.text
-            }
-        ]
-    )
-    await ctx.send(f"The intent is : {intent["choices"][0]["message"]["content"]}\nMy answer is : {answer["choices"][0]["message"]["content"]}")
-"""
+
+    try:
+        response_text = await fetch_llm_response(
+            ctx.activity.text, ctx.activity.from_.name
+        )
+    except httpx.HTTPError as exc:
+        await ctx.send(
+            f"I cannot connect to the flask app. ({exc.__class__.__name__}: {exc})"
+        )
+        return
+
+    await ctx.send(response_text)
+
+
+@discord_client.event
+async def on_ready():
+    print(f"Discord bot connected as {discord_client.user}")
+
+
+@discord_client.event
+async def on_message(message: discord.Message):
+    if message.author == discord_client.user or message.author.bot:
+        return
+
+    async with message.channel.typing():
+        try:
+            response_text = await fetch_llm_response(
+                message.content, message.author.display_name
+            )
+        except httpx.HTTPError as exc:
+            await message.channel.send(
+                f"I cannot connect to the flask app. ({exc.__class__.__name__}: {exc})"
+            )
+            return
+
+    await message.channel.send(response_text)
+
+
+async def start_teams_bot() -> None:
+    await app.start()
+
+
+async def start_discord_bot(token: str) -> None:
+    await discord_client.start(token)
+
+
+async def run_bots(run_teams: bool, run_discord: bool, discord_token: str | None):
+    tasks = []
+
+    if run_teams:
+        tasks.append(asyncio.create_task(start_teams_bot()))
+
+    if run_discord:
+        if not discord_token:
+            print(
+                "ENABLE_DISCORD_BOT is set but DISCORD_BOT_TOKEN is missing; skipping Discord bot."
+            )
+        else:
+            tasks.append(asyncio.create_task(start_discord_bot(discord_token)))
+
+    if not tasks:
+        raise RuntimeError("Nothing to run. Enable at least one bot.")
+
+    await asyncio.gather(*tasks)
+
 
 def main():
-    asyncio.run(app.start())
+    run_teams = os.getenv("ENABLE_TEAMS_BOT", "1").lower() not in {"0", "false", "no"}
+    run_discord = os.getenv("ENABLE_DISCORD_BOT", "0").lower() in {"1", "true", "yes"}
+    discord_token = os.getenv("DISCORD_BOT_TOKEN")
+
+    asyncio.run(run_bots(run_teams, run_discord, discord_token))
 
 
 if __name__ == "__main__":

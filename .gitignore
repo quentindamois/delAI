@@ -135,6 +135,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+students-assitants/discord.env
 
 # Spyder project settings
 .spyderproject

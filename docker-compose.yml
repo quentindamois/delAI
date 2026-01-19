@@ -4,6 +4,8 @@
 services:
   team_chatbot:
     build: ./students-assitants
+    env_file:
+      - ./students-assitants/discord.env
     ports:
      - "3978:3978"
      - "3979:3979"
