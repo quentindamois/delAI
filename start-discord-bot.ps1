@@ -3,6 +3,9 @@
 # Active le venv
 & "$PSScriptRoot\venv\Scripts\Activate.ps1"
 
+# Force unbuffered output
+$env:PYTHONUNBUFFERED = "1"
+
 # Charge les variables d'environnement depuis discord.env
 Get-Content "$PSScriptRoot\students-assistant\discord.env" | ForEach-Object {
     if ($_ -match '^([^=]+)=(.*)$') {

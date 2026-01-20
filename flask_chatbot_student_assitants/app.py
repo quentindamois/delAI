@@ -2,6 +2,35 @@ from flask import Flask, request
 from llama_cpp import Llama
 import re
 import threading
+import logging
+import sys
+from logging.handlers import RotatingFileHandler
+import os
+
+# Configure logging to both console and file
+log_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
+
+# Console handler
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(log_formatter)
+console_handler.setLevel(logging.INFO)
+
+# File handler
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+file_handler = RotatingFileHandler(
+    os.path.join(log_dir, "app.log"),
+    maxBytes=10485760,  # 10MB
+    backupCount=5
+)
+file_handler.setFormatter(log_formatter)
+file_handler.setLevel(logging.INFO)
+
+# Setup logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(console_handler)
+logger.addHandler(file_handler)
 
 """
 llm = Llama.from_pretrained(
@@ -14,9 +43,6 @@ try:
 except:
     llm = Llama(model_path="./models/ibm-granite_granite-3.3-2b-instruct-Q3_K_M.gguf", verbose=False)
 
-
-intent_classifier = Llama(model_path="./models/Qwen-3B-Intent-Microplan-v2.i1-Q6_K.gguf", verbose=False)
-
 # Lock pour empêcher les accès concurrents aux modèles
 model_lock = threading.Lock()
 
@@ -25,7 +51,7 @@ model_lock = threading.Lock()
 def send_email_to_teacher(user_input: str, user_name: str) -> dict:
     """Send an email to a teacher with the student's question."""
     # TODO: Implement actual email sending logic (SMTP, API, etc.)
-    print(f"[ACTION] Sending email to teacher from {user_name}: {user_input}")
+    logger.info(f"[ACTION] Sending email to teacher from {user_name}: {user_input[:100]}")
     return {
         "success": True,
         "action": "email_sent",
@@ -33,32 +59,32 @@ def send_email_to_teacher(user_input: str, user_name: str) -> dict:
     }
 
 
-def create_opinion_form(user_input: str, user_name: str) -> dict:
-    """Create a form to gather student opinions about courses."""
-    # TODO: Implement form creation (Google Forms API, Microsoft Forms, etc.)
-    print(f"[ACTION] Creating opinion form requested by {user_name}: {user_input}")
-    return {
-        "success": True,
-        "action": "form_created",
-        "message": "Opinion form created and sent to students."
-    }
-
-
 def create_group_formation_request(user_input: str, user_name: str) -> dict:
     """Create a request for students to form groups."""
     # TODO: Implement group formation logic (database, notifications, etc.)
-    print(f"[ACTION] Creating group formation request by {user_name}: {user_input}")
+    logger.info(f"[ACTION] Creating group formation request by {user_name}: {user_input[:100]}")
     return {
         "success": True,
-        "action": "groups_requested",
-        "message": "Group formation request sent to students."
+        "action": "groups_created",
+        "message": "Group formation request created and sent to students."
+    }
+
+
+def retrieve_information_request(user_input: str, user_name: str) -> dict:
+    """Create a request to retrieve information from RAG."""
+    # TODO: Implement information retrieval logic
+    logger.info(f"[ACTION] Creating information retrieval request by {user_name}: {user_input[:100]}")
+    return {
+        "success": True,
+        "action": "information_requested",
+        "message": "Information retrieval request sent to students."
     }
 
 
 keyword_dictionnary = {
-    "send_email":{"verb":["write", "email", "ask about"], "noun":["teacher", "email"]},
-    "evaluation_form":{"verb":["evaluate", "give"], "adj":["end of semester", "end of course", "mid semester", "end of year"], "noun":["returns", "feedback", "opinions", "advice", "class"]},
-    "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]}
+    "send_email":{"verb":["send", "sent", "write", "ask about"], "noun":["teacher", "question", "help"]},
+    "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]},
+    "get_information":{"verb":["need", "want", "look for", "get", "know"], "noun":["what", "information", "help", "info"]},
 }
 
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"
@@ -82,13 +108,17 @@ gen_regex()
 
 def get_intent(text):
     list_detected_intent =  list(filter(lambda a: re.search(keyword_dictionnary[a], text), keyword_dictionnary.keys()))
-    print(list_detected_intent)
+    logger.info(f"Intent detected: {list_detected_intent}")
     return "none" if len(list_detected_intent) == 0 else list_detected_intent[0]
 
 
 last_message = ""
 
 app = Flask(__name__)
+# Configure Flask's logger to also output to console
+app.logger.addHandler(console_handler)
+app.logger.addHandler(file_handler)
+app.logger.setLevel(logging.INFO)
 
 @app.route("/")
 def hello_world():
@@ -100,83 +130,96 @@ def get_last_message():
 
 @app.route("/ask", methods=['POST'])
 def answer_ask():
-    global last_message  # Fix: need to declare global to update the variable
+    global last_message
     user_input = request.form.get('user_input')
     user_name = request.form.get('user_name', 'User')
+    memory_context = request.form.get('memory_context', '')
+    user_context = request.form.get('user_context', '')
+    
+    logger.info(f"Request from {user_name}: {user_input[:50]}...")
     
     with model_lock:
-        # Detect user intent
-        intent = intent_classifier.create_chat_completion(
-            messages = [
-                {"role": "system", "content": """Analyze the user's message and classify their intent into ONE of the following categories:
-
-- 'send email': The user (student) wants to send an email to a teacher to ask a question or request information
-- 'ask to form group': The user (teacher) wants students to organize themselves into groups for a project or presentation
-- 'get information': The user (student or teacher) is seeking general information or help
-- 'none': The message is a general question, greeting, or doesn't match any of the above categories
-
-Respond with ONLY the intent category name."""},
-                {
-                    "role": "user",
-                    "content": user_input
-                }
-            ]
-        )
-        
-        detected_intent = intent["choices"][0]["message"]["content"].strip().lower()
+        # Detect user intent using rule-based function
+        detected_intent = get_intent(user_input.lower())
         action_result = None
         action_taken = False
         
         # Execute actions based on detected intent
-        if "send email" in detected_intent or "email" in detected_intent:
+        # Only trigger send_email if both verb AND noun are present
+        if detected_intent == "send_email":
             action_result = send_email_to_teacher(user_input, user_name)
             action_taken = True
-        elif "ask opinion" in detected_intent or "opinion" in detected_intent:
-            action_result = create_opinion_form(user_input, user_name)
-            action_taken = True
-        elif "form group" in detected_intent or "group" in detected_intent:
+        elif detected_intent == "make_group":
             action_result = create_group_formation_request(user_input, user_name)
+            action_taken = True
+        elif detected_intent == "get_information":
+            action_result = retrieve_information_request(user_input, user_name)
             action_taken = True
         
         # Generate conversational response
         if action_taken and action_result:
-            system_prompt = f"""You are a helpful assistant for students and teachers. You only speak English.
+            system_prompt = f"""Your name is Quorum.
+            You are a helpful assistant for students and teachers. You only speak English.
+
+{user_context}
 
 You have just performed this action: {action_result['message']}
 
 Confirm this action to the user in a friendly and professional way. Be brief but reassuring."""
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input}
+            ]
         else:
-            system_prompt = f"""You are a helpful assistant for students and teachers. You only speak English. 
+            # Build messages with context if available
+            system_prompt = f"""You are a helpful assistant for students and teachers. You only speak English.
 
-The user's intent is: {detected_intent}
+{user_context}
+
+The user's intent appears to be: {detected_intent}
 
 You can help with:
 - Students: Send emails to teachers with questions
 - Teachers: Help students form groups for projects or presentations
 - Provide general information and assistance
 
+IMPORTANT INSTRUCTIONS:
+- Use the User Information provided above to answer questions about the user
+- Never invent or guess information - if the user info is empty or you don't know, say you don't know
+- Answer naturally without mentioning internal processes or actions
+- If the user asks about their own information (email, class, ID), check the User Information section and provide it if available
+
 If the user speaks in another language, politely ask them to communicate in English. Provide helpful and friendly responses."""
-        
-        answer = llm.create_chat_completion(
+            
             messages = [
                 {"role": "system", "content": system_prompt},
-                {
+            ]
+            
+            # Add conversation history if available
+            if memory_context:
+                messages.append({
+                    "role": "user",
+                    "content": memory_context + "\nPlease respond to the following message, using the context above if relevant:\n\n" + user_input
+                })
+            else:
+                messages.append({
                     "role": "user",
                     "content": user_input
-                }
-            ]
-        )
+                })
+        
+        answer = llm.create_chat_completion(messages=messages)
     
     response_text = answer["choices"][0]["message"]["content"]
     
     # Format response
     if action_taken:
         last_message = f"[Intent: {detected_intent}] [Action: {action_result['action']}]\n{response_text}"
-        return f"✅ {response_text}"
+        return f"✅ You want to {detected_intent}. {response_text}"
     else:
         last_message = f"[Intent: {detected_intent}]\n{response_text}"
         return response_text
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Disable reloader to avoid subprocess buffering issues with logging
+    app.run(debug=True, use_reloader=False)

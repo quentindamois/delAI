@@ -1,5 +1,7 @@
 import asyncio
 import os
+import sys
+import logging
 
 import discord
 import httpx
@@ -13,6 +15,20 @@ from conversation_logger import (
     log_bot_message,
     get_last_interactions
 )
+from user_context import (
+    init_user_file,
+    get_user_info,
+    format_user_context,
+    update_user_info_from_message
+)
+
+# Configure logging to output immediately
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 
 
 LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://flask_app_llm:5000/ask")
@@ -27,20 +43,20 @@ discord_client = discord.Client(intents=discord_intents)
 async def fetch_llm_response(message_text: str, user_name: str) -> str:
     interactions = get_last_interactions(user_name)
     memory_context = format_memory_for_llm(interactions)
+    
+    # Get user profile information
+    user_info = get_user_info(user_name)
+    user_context = format_user_context(user_info)
 
-    full_prompt = (
-        f"{memory_context}"
-        f"Here is the current user message:\n"
-        f"{message_text}"
-    )
-
-    print(full_prompt)
+    # Send memory context separately to avoid duplication
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
             LLM_ENDPOINT,
             data={
-                "user_input": full_prompt,
+                "user_input": message_text,
                 "user_name": user_name,
+                "memory_context": memory_context,
+                "user_context": user_context,
             },
         )
         response.raise_for_status()
@@ -67,7 +83,7 @@ async def handle_message(ctx: ActivityContext[MessageActivity]):
 
 @discord_client.event
 async def on_ready():
-    print(f"Discord bot connected as {discord_client.user}")
+    logger.info(f"Discord bot connected as {discord_client.user}")
 
 
 @discord_client.event
@@ -75,16 +91,29 @@ async def on_message(message: discord.Message):
     if message.author == discord_client.user or message.author.bot:
         return
 
+    # Use Discord ID as unique identifier, display_name for readability
+    user_id = str(message.author.id)
+    display_name = message.author.display_name
+
+    # Try to extract and store user info from the message
+    update_user_info_from_message(
+        user_id,
+        display_name,
+        message.content
+    )
+
+    logger.info(f"Message from {display_name}: {message.content}")
+
     # Log message utilisateur
     log_user_message(
-        message.author.display_name,
+        user_id,
         message.content
     )
 
     async with message.channel.typing():
         try:
             response_text = await fetch_llm_response(
-                message.content, message.author.display_name
+                message.content, user_id
             )
         except httpx.HTTPError as exc:
             await message.channel.send(
@@ -94,7 +123,7 @@ async def on_message(message: discord.Message):
 
     # Log réponse du bot
     log_bot_message(
-        message.author.display_name,
+        user_id,
         response_text
     )
 
@@ -151,6 +180,7 @@ def format_memory_for_llm(interactions: list[tuple[str, str]]) -> str:
 
 def main():
     init_csv()
+    init_user_file()
 
     run_teams = os.getenv("ENABLE_TEAMS_BOT", "1").lower() in {"1", "true", "yes"}
     run_discord = os.getenv("ENABLE_DISCORD_BOT", "1").lower() in {"1", "true", "yes"}
