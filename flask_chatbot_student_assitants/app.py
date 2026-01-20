@@ -87,8 +87,8 @@ def answer_ask():
                 {"role": "system", "content": """Analyze the user's message and classify their intent into ONE of the following categories:
 
 - 'send email': The user (student) wants to send an email to a teacher to ask a question or request information
-- 'ask opinion': The user (teacher) wants to create a form to collect student feedback/opinions about courses
 - 'ask to form group': The user (teacher) wants students to organize themselves into groups for a project or presentation
+- 'get information': The user (student or teacher) is seeking general information or help
 - 'none': The message is a general question, greeting, or doesn't match any of the above categories
 
 Respond with ONLY the intent category name."""},
@@ -128,8 +128,8 @@ The user's intent is: {detected_intent}
 
 You can help with:
 - Students: Send emails to teachers with questions
-- Teachers: Create opinion forms for student feedback on courses
 - Teachers: Help students form groups for projects or presentations
+- Provide general information and assistance
 
 If the user speaks in another language, politely ask them to communicate in English. Provide helpful and friendly responses."""
         

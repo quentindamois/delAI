@@ -152,8 +152,8 @@ def format_memory_for_llm(interactions: list[tuple[str, str]]) -> str:
 def main():
     init_csv()
 
-    run_teams = os.getenv("ENABLE_TEAMS_BOT", "1").lower() not in {"0", "false", "no"}
-    run_discord = os.getenv("ENABLE_DISCORD_BOT", "0").lower() in {"1", "true", "yes"}
+    run_teams = os.getenv("ENABLE_TEAMS_BOT", "1").lower() in {"1", "true", "yes"}
+    run_discord = os.getenv("ENABLE_DISCORD_BOT", "1").lower() in {"1", "true", "yes"}
     discord_token = os.getenv("DISCORD_BOT_TOKEN")
 
     asyncio.run(run_bots(run_teams, run_discord, discord_token))
