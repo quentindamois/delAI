@@ -109,10 +109,8 @@ gen_regex()
 def get_intent(text):
     list_detected_intent =  list(filter(lambda a: re.search(keyword_dictionnary[a], text), keyword_dictionnary.keys()))
     logger.info(f"Intent detected: {list_detected_intent}")
-    return "Not specified" if len(list_detected_intent) == 0 else list_detected_intent[0]
+    return "Unknown" if len(list_detected_intent) == 0 else list_detected_intent[0]
 
-
-last_message = ""
 
 app = Flask(__name__)
 # Configure Flask's logger to also output to console
@@ -124,13 +122,8 @@ app.logger.setLevel(logging.INFO)
 def hello_world():
     return "Hello world"
 
-@app.route("/back", methods=["GET"])
-def get_last_message():
-    return last_message
-
 @app.route("/ask", methods=['POST'])
 def answer_ask():
-    global last_message
     user_input = request.form.get('user_input')
     user_name = request.form.get('user_name', 'User')
     memory_context = request.form.get('memory_context', '')
@@ -147,81 +140,62 @@ def answer_ask():
         # Execute actions based on detected intent
         # Only trigger send_email if both verb AND noun are present
         if detected_intent == "send_email":
+            detected_intent_pretty = "send an email"
             action_result = send_email_to_teacher(user_input, user_name)
             action_taken = True
         elif detected_intent == "make_group":
+            detected_intent_pretty = "form groups"
             action_result = create_group_formation_request(user_input, user_name)
             action_taken = True
         elif detected_intent == "get_information":
+            detected_intent_pretty = "retrieve information"
             action_result = retrieve_information_request(user_input, user_name)
             action_taken = True
         
-        # Generate conversational response
-        if action_taken and action_result:
-            system_prompt = f"""You are Quorum, a helpful bot assistant for students and teachers. You only speak English.
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are Quorum, a helpful bot assistant for students and teachers. "
+                    "You only speak English. "
+                    "Only provide personal details if explicitly listed in the provided user information. "
+                    "You must never invent, assume, or fabricate schedules, plans, events, classes, or activities. "
+                    "If this information is not explicitly provided, you must say you do not have it. "
+                    "You must not add examples, guesses, or placeholders. "
+                    "Do not answer with partially related or generic user details. "
+                    "Be friendly and professional. "
+                    "Keep your answers brief."
+                    
+                )
+            }
+        ]
 
-Here are the users informations:
-{user_context}
+        developer_content = []
 
-The user may have wanted you to: {action_result['message']}.
-If so, respond to this request accordingly and confirm the action in a friendly and professional way. Be brief but reassuring. Do not write an email.
-If not, answer the user's question normally.
-"""
+        developer_content.append("Trusted user information:")
+        developer_content.append(user_context)
 
-            messages = [
-                {"role": "system", "content": system_prompt},
-            ]
+        if memory_context:
+            developer_content.append("\nRelevant conversation memory:")
+            developer_content.append(memory_context)
 
-            # Add conversation history if available
-            if memory_context:
-                messages.append({
-                    "role": "user",
-                    "content": memory_context + "\nPlease respond to the following message, using the context above if relevant:\n\n" + user_input
-                })
-            else:
-                messages.append({
-                    "role": "user",
-                    "content": "\nPlease respond to the following message, using the context above if relevant:\n\n" +  user_input
-                })
-        else:
-            system_prompt = f"""You are Quorum, a helpful bot assistant for students and teachers. You only speak English.
-            
-Here are the users informations:
-{user_context}
+        if action_taken:
+            developer_content.append(
+                f"\nDetected possible intent: {detected_intent_pretty}\n"
+                "If the current user request matches this intent, perform it and confirm briefly. "
+                "Otherwise, ignore this instruction."
+            )
 
-The user's intent appears to be: {detected_intent}. If the user's intent is not specified, respond normally to their query.
-"""
-            system_prompt += """
-You can help with:
-- Students: Send emails to teachers with questions
-- Teachers: Help students form groups for projects or presentations
-- Provide general information and assistance
+        messages.append({
+            "role": "developer",
+            "content": "\n".join(developer_content)
+        })
 
-IMPORTANT INSTRUCTIONS:
-When asked, answer only using the User Information provided; do not guess or invent details.
-If you don’t know the answer, say so clearly. Do not make up answers.
-Ask politely for clarification if a request is unclear.
-Respond naturally, helpfully, and professionally.
-Provide personal details (email, class, ID) only if listed in the User Information.
-If the user writes in a language other than English, ask them politely to use English.
-If the input is nonsensical, respond politely that you cannot understand it."""
+        messages.append({
+            "role": "user",
+            "content": user_input
+        })
 
-            messages = [
-                {"role": "system", "content": system_prompt},
-            ]
-            
-            # Add conversation history if available
-            if memory_context:
-                messages.append({
-                    "role": "user",
-                    "content": memory_context + "\nPlease respond to the following message :\n\n" + user_input
-                })
-            else:
-                messages.append({
-                    "role": "user",
-                    "content": "\nPlease respond to the following message :\n\n" + user_input
-                })
-        
         logger.info(messages)
         answer = llm.create_chat_completion(messages=messages)
     
@@ -229,10 +203,8 @@ If the input is nonsensical, respond politely that you cannot understand it."""
     
     # Format response
     if action_taken:
-        last_message = f"[Intent: {detected_intent}] [Action: {action_result['action']}]\n{response_text}"
         return f"✅ You want to {detected_intent}. {response_text}"
     else:
-        last_message = f"[Intent: {detected_intent}]\n{response_text}"
         return response_text
 
 

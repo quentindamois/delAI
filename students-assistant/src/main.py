@@ -43,19 +43,30 @@ discord_client = discord.Client(intents=discord_intents)
 
 
 async def fetch_llm_response(message_text: str, user_name: str) -> str:
-    full_prompt = build_llm_prompt(
-        user_name=user_name,
-        current_message=message_text,
-    )
+    short_term_interactions = get_last_interactions(user_name)
+    short_term_context = format_short_term_memory(short_term_interactions)
 
-    logger.info(f"Prompt sent to LLM:\n{full_prompt}")
+    long_term_memories = retrieve_relevant_memories(user_name, message_text)
+    long_term_context = format_long_term_memory(long_term_memories)
+
+    memory_context = f"{short_term_context}{long_term_context}"
+    user_context = format_user_context(get_user_info(user_name))
+
+    logger.info(
+        "Payload to LLM | user_input='%s' | memory_len=%d | user_ctx_len=%d",
+        message_text,
+        len(memory_context),
+        len(user_context),
+    )
 
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
             LLM_ENDPOINT,
             data={
-                "user_input": full_prompt,
+                "user_input": message_text,
                 "user_name": user_name,
+                "memory_context": memory_context,
+                "user_context": user_context,
             },
         )
         response.raise_for_status()
@@ -175,7 +186,6 @@ def format_short_term_memory(interactions: list[tuple[str, str]]) -> str:
 
     return (
         "Here are the most recent interactions you had with the user.\n"
-        "Use this context only if it is relevant to answer the current message.\n\n"
         f"{content}\n\n"
     )
 
@@ -192,31 +202,8 @@ def format_long_term_memory(memories: list[dict]) -> str:
 
     return (
         "Here are past interactions with the user that may be relevant.\n"
-        "Use them only if they help you answer the current message.\n\n"
         f"{content}\n\n"
     )
-
-def build_llm_prompt(
-    user_name: str,
-    current_message: str,
-) -> str:
-    # Short-term memory
-    short_term_interactions = get_last_interactions(user_name)
-    short_term_context = format_short_term_memory(short_term_interactions)
-
-    # Long-term memory (RAG)
-    long_term_memories = retrieve_relevant_memories(user_name, current_message)
-    long_term_context = format_long_term_memory(long_term_memories)
-
-    return (
-        f"{short_term_context}"
-        f"{long_term_context}"
-        f"Please, only answer to the user request without adding 'User message' or 'Agent response'\n"
-        f"If with the given information you cannot answer the questions, say you can't whithout creating new informations\n"
-        f"Here is the current user message:\n"
-        f"{current_message}"
-    )
-
 
 def main():
     init_csv()
