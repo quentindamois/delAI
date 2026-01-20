@@ -11,6 +11,7 @@ from conversation_logger import (
     init_csv,
     log_user_message,
     log_bot_message,
+    get_last_interactions
 )
 
 
@@ -24,13 +25,27 @@ discord_client = discord.Client(intents=discord_intents)
 
 
 async def fetch_llm_response(message_text: str, user_name: str) -> str:
+    interactions = get_last_interactions(user_name)
+    memory_context = format_memory_for_llm(interactions)
+
+    full_prompt = (
+        f"{memory_context}"
+        f"Here is the current user message:\n"
+        f"{message_text}"
+    )
+
+    print(full_prompt)
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
             LLM_ENDPOINT,
-            data={"user_input": message_text, "user_name": user_name},
+            data={
+                "user_input": full_prompt,
+                "user_name": user_name,
+            },
         )
         response.raise_for_status()
         return response.text
+
 
 
 @app.on_message
@@ -113,6 +128,25 @@ async def run_bots(run_teams: bool, run_discord: bool, discord_token: str | None
         raise RuntimeError("Nothing to run. Enable at least one bot.")
 
     await asyncio.gather(*tasks)
+
+def format_memory_for_llm(interactions: list[tuple[str, str]]) -> str:
+    if not interactions:
+        return ""
+
+    memory_blocks = []
+    for user_msg, bot_msg in interactions:
+        memory_blocks.append(
+            f"User message: {user_msg}\n"
+            f"Agent response: {bot_msg}"
+        )
+
+    memory_text = "\n\n".join(memory_blocks)
+
+    return (
+        "Here are the last interactions you had with the user.\n"
+        "Use this information only if it is relevant to answer the user.\n\n"
+        f"{memory_text}\n\n"
+    )
 
 
 def main():
