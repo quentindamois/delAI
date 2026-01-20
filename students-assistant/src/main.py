@@ -30,6 +30,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from long_term_memory import retrieve_relevant_memories, format_long_term_memory
+
 
 LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://flask_app_llm:5000/ask")
 
@@ -41,26 +43,24 @@ discord_client = discord.Client(intents=discord_intents)
 
 
 async def fetch_llm_response(message_text: str, user_name: str) -> str:
-    interactions = get_last_interactions(user_name)
-    memory_context = format_memory_for_llm(interactions)
-    
-    # Get user profile information
-    user_info = get_user_info(user_name)
-    user_context = format_user_context(user_info)
+    full_prompt = build_llm_prompt(
+        user_name=user_name,
+        current_message=message_text,
+    )
 
-    # Send memory context separately to avoid duplication
+    logger.info(f"Prompt sent to LLM:\n{full_prompt}")
+
     async with httpx.AsyncClient(timeout=120) as client:
         response = await client.post(
             LLM_ENDPOINT,
             data={
-                "user_input": message_text,
+                "prompt": full_prompt,
                 "user_name": user_name,
-                "memory_context": memory_context,
-                "user_context": user_context,
             },
         )
         response.raise_for_status()
         return response.text
+
 
 
 
@@ -158,23 +158,63 @@ async def run_bots(run_teams: bool, run_discord: bool, discord_token: str | None
 
     await asyncio.gather(*tasks)
 
-def format_memory_for_llm(interactions: list[tuple[str, str]]) -> str:
-    if not interactions:
-        return ""
-
-    memory_blocks = []
+def format_interaction_blocks(interactions: list[tuple[str, str]]) -> str:
+    blocks = []
     for user_msg, bot_msg in interactions:
-        memory_blocks.append(
+        blocks.append(
             f"User message: {user_msg}\n"
             f"Agent response: {bot_msg}"
         )
+    return "\n\n".join(blocks)
 
-    memory_text = "\n\n".join(memory_blocks)
+def format_short_term_memory(interactions: list[tuple[str, str]]) -> str:
+    if not interactions:
+        return ""
+
+    content = format_interaction_blocks(interactions)
 
     return (
-        "Here are the last interactions you had with the user.\n"
-        "Use this information only if it is relevant to answer the user.\n\n"
-        f"{memory_text}\n\n"
+        "Here are the most recent interactions you had with the user.\n"
+        "Use this context only if it is relevant to answer the current message.\n\n"
+        f"{content}\n\n"
+    )
+
+def format_long_term_memory(memories: list[dict]) -> str:
+    if not memories:
+        return ""
+
+    interactions = [
+        (mem["user_message"], mem["agent_response"])
+        for mem in memories
+    ]
+
+    content = format_interaction_blocks(interactions)
+
+    return (
+        "Here are past interactions with the user that may be relevant.\n"
+        "Use them only if they help you answer the current message.\n\n"
+        f"{content}\n\n"
+    )
+
+def build_llm_prompt(
+    user_name: str,
+    current_message: str,
+) -> str:
+    # Short-term memory
+    short_term_interactions = get_last_interactions(user_name)
+    short_term_context = format_short_term_memory(short_term_interactions)
+
+    # Long-term memory (RAG)
+    long_term_memories = retrieve_relevant_memories(user_name, current_message)
+    long_term_context = format_long_term_memory(long_term_memories)
+
+    return (
+        f"{short_term_context}"
+        f"{long_term_context}"
+        f"Please, only answer to the user request without adding 'User message' or 'Agent response'\n"
+        f"If with the given information you cannot answer the questions, say you can't whithout creating new informations\n"
+        f"Here is the current user message:\n"
+        f"{current_message}"
     )
 
 
