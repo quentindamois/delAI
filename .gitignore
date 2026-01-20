@@ -183,3 +183,5 @@ cython_debug/
 
 *.gguf
 *.env
+delAIvenv/
+students-assistant/conversation_log.csv

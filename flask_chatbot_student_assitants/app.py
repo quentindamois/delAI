@@ -3,14 +3,17 @@ from llama_cpp import Llama
 import threading
 
 
+
 """
 llm = Llama.from_pretrained(
 	repo_id="hugging-quants/Llama-3.2-1B-Instruct-Q8_0-GGUF",
 	filename="llama-3.2-1b-instruct-q8_0.gguf",
 )
 """
-
-llm = Llama(model_path="./models/llama-3.2-1b-instruct-q8_0.gguf", verbose=False)
+try:
+    llm = Llama(model_path="./models/llama-3.2-1b-instruct-q8_0.gguf", verbose=False)
+except:
+    llm = Llama(model_path="./models/ibm-granite_granite-3.3-2b-instruct-Q3_K_M.gguf", verbose=False)
 
 """
 intent_classifier = Llama.from_pretrained(

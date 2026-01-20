@@ -7,6 +7,12 @@ from microsoft_teams.api import MessageActivity, TypingActivityInput
 from microsoft_teams.apps import ActivityContext, App
 from microsoft_teams.devtools import DevToolsPlugin
 
+from conversation_logger import (
+    init_csv,
+    log_user_message,
+    log_bot_message,
+)
+
 
 LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://flask_app_llm:5000/ask")
 
@@ -54,6 +60,12 @@ async def on_message(message: discord.Message):
     if message.author == discord_client.user or message.author.bot:
         return
 
+    # Log message utilisateur
+    log_user_message(
+        message.author.display_name,
+        message.content
+    )
+
     async with message.channel.typing():
         try:
             response_text = await fetch_llm_response(
@@ -65,7 +77,14 @@ async def on_message(message: discord.Message):
             )
             return
 
+    # Log réponse du bot
+    log_bot_message(
+        message.author.display_name,
+        response_text
+    )
+
     await message.channel.send(response_text)
+
 
 
 async def start_teams_bot() -> None:
@@ -97,6 +116,8 @@ async def run_bots(run_teams: bool, run_discord: bool, discord_token: str | None
 
 
 def main():
+    init_csv()
+
     run_teams = os.getenv("ENABLE_TEAMS_BOT", "1").lower() not in {"0", "false", "no"}
     run_discord = os.getenv("ENABLE_DISCORD_BOT", "0").lower() in {"1", "true", "yes"}
     discord_token = os.getenv("DISCORD_BOT_TOKEN")
