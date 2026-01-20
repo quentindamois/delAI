@@ -54,7 +54,7 @@ async def fetch_llm_response(message_text: str, user_name: str) -> str:
         response = await client.post(
             LLM_ENDPOINT,
             data={
-                "prompt": full_prompt,
+                "user_input": full_prompt,
                 "user_name": user_name,
             },
         )
