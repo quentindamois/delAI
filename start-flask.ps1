@@ -7,5 +7,5 @@
 $env:PYTHONUNBUFFERED = "1"
 
 # Lance Flask
-Set-Location "$PSScriptRoot\flask_chatbot_student_assitants"
+Set-Location "$PSScriptRoot\flask_chatbot_student_assistant"
 python app.py

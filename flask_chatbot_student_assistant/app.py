@@ -82,9 +82,9 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
 
 
 keyword_dictionnary = {
-    "send_email":{"verb":["send", "sent", "write", "ask about"], "noun":["teacher", "question", "help"]},
+    "send_email":{"verb":["send", "sent", "write"], "noun":["teacher", "question", "help"]},
     "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]},
-    "get_information":{"verb":["need", "want", "look for", "get", "know"], "noun":["what", "information", "help", "info"]},
+    "get_information":{"verb":["need", "want", "look for", "get", "know", "ask about"], "noun":["what", "information", "help", "info"]},
 }
 
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"
@@ -109,7 +109,7 @@ gen_regex()
 def get_intent(text):
     list_detected_intent =  list(filter(lambda a: re.search(keyword_dictionnary[a], text), keyword_dictionnary.keys()))
     logger.info(f"Intent detected: {list_detected_intent}")
-    return "none" if len(list_detected_intent) == 0 else list_detected_intent[0]
+    return "Not specified" if len(list_detected_intent) == 0 else list_detected_intent[0]
 
 
 last_message = ""
@@ -158,43 +158,20 @@ def answer_ask():
         
         # Generate conversational response
         if action_taken and action_result:
-            system_prompt = f"""Your name is Quorum.
-            You are a helpful assistant for students and teachers. You only speak English.
+            system_prompt = f"""You are Quorum, a helpful bot assistant for students and teachers. You only speak English.
 
+Here are the users informations:
 {user_context}
 
-You have just performed this action: {action_result['message']}
+The user may have wanted you to: {action_result['message']}.
+If so, respond to this request accordingly and confirm the action in a friendly and professional way. Be brief but reassuring. Do not write an email.
+If not, answer the user's question normally.
+"""
 
-Confirm this action to the user in a friendly and professional way. Be brief but reassuring."""
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input}
-            ]
-        else:
-            # Build messages with context if available
-            system_prompt = f"""You are a helpful assistant for students and teachers. You only speak English.
-
-{user_context}
-
-The user's intent appears to be: {detected_intent}
-
-You can help with:
-- Students: Send emails to teachers with questions
-- Teachers: Help students form groups for projects or presentations
-- Provide general information and assistance
-
-IMPORTANT INSTRUCTIONS:
-- Use the User Information provided above to answer questions about the user
-- Never invent or guess information - if the user info is empty or you don't know, say you don't know
-- Answer naturally without mentioning internal processes or actions
-- If the user asks about their own information (email, class, ID), check the User Information section and provide it if available
-
-If the user speaks in another language, politely ask them to communicate in English. Provide helpful and friendly responses."""
-            
             messages = [
                 {"role": "system", "content": system_prompt},
             ]
-            
+
             # Add conversation history if available
             if memory_context:
                 messages.append({
@@ -204,9 +181,48 @@ If the user speaks in another language, politely ask them to communicate in Engl
             else:
                 messages.append({
                     "role": "user",
-                    "content": user_input
+                    "content": "\nPlease respond to the following message, using the context above if relevant:\n\n" +  user_input
+                })
+        else:
+            system_prompt = f"""You are Quorum, a helpful bot assistant for students and teachers. You only speak English.
+            
+Here are the users informations:
+{user_context}
+
+The user's intent appears to be: {detected_intent}. If the user's intent is not specified, respond normally to their query.
+"""
+            system_prompt += """
+You can help with:
+- Students: Send emails to teachers with questions
+- Teachers: Help students form groups for projects or presentations
+- Provide general information and assistance
+
+IMPORTANT INSTRUCTIONS:
+When asked, answer only using the User Information provided; do not guess or invent details.
+If you don’t know the answer, say so clearly. Do not make up answers.
+Ask politely for clarification if a request is unclear.
+Respond naturally, helpfully, and professionally.
+Provide personal details (email, class, ID) only if listed in the User Information.
+If the user writes in a language other than English, ask them politely to use English.
+If the input is nonsensical, respond politely that you cannot understand it."""
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+            ]
+            
+            # Add conversation history if available
+            if memory_context:
+                messages.append({
+                    "role": "user",
+                    "content": memory_context + "\nPlease respond to the following message :\n\n" + user_input
+                })
+            else:
+                messages.append({
+                    "role": "user",
+                    "content": "\nPlease respond to the following message :\n\n" + user_input
                 })
         
+        logger.info(messages)
         answer = llm.create_chat_completion(messages=messages)
     
     response_text = answer["choices"][0]["message"]["content"]

@@ -7,8 +7,8 @@ import numpy as np
 from pathlib import Path
 from llama_cpp import Llama
 
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "models" / "nomic-embed-text-v1.5.Q4_K_M.gguf"
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+MODEL_PATH = BASE_DIR / "flask_chatbot_student_assistant" / "models" / "nomic-embed-text-v1.5.Q4_K_M.gguf"
 CSV_FILE = "conversation_log.csv"
 
 MAX_HISTORY = int(os.getenv("LONG_TERM_HISTORY", 50))
