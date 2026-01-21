@@ -9,6 +9,8 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
+load_dotenv()
 
 # Configure logging to both console and file
 log_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
@@ -66,9 +68,9 @@ def send_email_to_teacher(user_input: str, user_name: str) -> dict:
     # Email configuration (use environment variables in production)
     smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')  # e.g., smtp.gmail.com, smtp.office365.com
     smtp_port = int(os.getenv('SMTP_PORT', '587'))  # 587 for TLS, 465 for SSL
-    sender_email = os.getenv('SENDER_EMAIL', 'your-email@example.com')
-    sender_password = os.getenv('SENDER_PASSWORD', 'your-password')
-    teacher_email = os.getenv('TEACHER_EMAIL', 'teacher@example.com')
+    sender_email = os.getenv('MAIL_FROM', 'your-email@example.com')
+    sender_password = os.getenv('MAIL_PASSWORD', 'your-password')
+    teacher_email = os.getenv('MAIL_TO', 'teacher@example.com')
     
     try:
         # Create message
@@ -158,7 +160,14 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
 keyword_dictionnary = {
     "send_email":{"verb":["send", "sent", "write"], "noun":["teacher", "question", "help"]},
     "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]},
-    "get_information":{"verb":["need", "want", "look for", "get", "know", "ask about"], "noun":["what", "information", "help", "info"]},
+    "get_information":{
+        "verb":["look for", "find", "search"],
+        "noun":[
+            "school", "campus", "calendar",
+            "file", "document", "doc", "docs", "documentation", "pdf", "guide", "policy",
+            "assignment", "brief", "instructions", "manual"
+        ]
+    },
 }
 
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"

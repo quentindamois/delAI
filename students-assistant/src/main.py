@@ -35,6 +35,7 @@ from long_term_memory import retrieve_relevant_memories, format_long_term_memory
 
 # main.py - modifier ces lignes
 LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://127.0.0.1:5000/ask")
+logger.info(f"Using LLM ENDPOINT: {LLM_ENDPOINT}")
 SUMMARIZATION_ENDPOINT = os.getenv("SUMMARIZATION_ENDPOINT", "http://127.0.0.1:5000/summarize")
 
 MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "400"))
