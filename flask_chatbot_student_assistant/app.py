@@ -6,6 +6,9 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Configure logging to both console and file
 log_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
@@ -46,17 +49,88 @@ except:
 # Lock pour empêcher les accès concurrents aux modèles
 model_lock = threading.Lock()
 
+# Pending intent state to enable confirmation on the next user message
+pending_intent = {
+    "intent": None,
+    "pretty": None,
+    "text": None,
+    "user_name": None,
+}
+
 
 # Action handlers
 def send_email_to_teacher(user_input: str, user_name: str) -> dict:
     """Send an email to a teacher with the student's question."""
-    # TODO: Implement actual email sending logic (SMTP, API, etc.)
     logger.info(f"[ACTION] Sending email to teacher from {user_name}: {user_input[:100]}")
-    return {
-        "success": True,
-        "action": "email_sent",
-        "message": f"Email sent to the teacher with your question."
-    }
+    
+    # Email configuration (use environment variables in production)
+    smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')  # e.g., smtp.gmail.com, smtp.office365.com
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))  # 587 for TLS, 465 for SSL
+    sender_email = os.getenv('SENDER_EMAIL', 'your-email@example.com')
+    sender_password = os.getenv('SENDER_PASSWORD', 'your-password')
+    teacher_email = os.getenv('TEACHER_EMAIL', 'teacher@example.com')
+    
+    try:
+        # Create message
+        message = MIMEMultipart('alternative')
+        message['Subject'] = f'Question from student: {user_name}'
+        message['From'] = sender_email
+        message['To'] = teacher_email
+        
+        # Email body
+        text_content = f"""
+Hello,
+
+You have received a question from student {user_name}:
+
+{user_input}
+
+---
+This email was sent automatically by the Quorum student assistant bot.
+        """
+        
+        html_content = f"""
+<html>
+  <body>
+    <p>Hello,</p>
+    <p>You have received a question from student <strong>{user_name}</strong>:</p>
+    <blockquote style="margin: 20px; padding: 10px; background-color: #f5f5f5; border-left: 4px solid #4CAF50;">
+      {user_input}
+    </blockquote>
+    <hr>
+    <p style="color: #666; font-size: 12px;">This email was sent automatically by the Quorum student assistant bot.</p>
+  </body>
+</html>
+        """
+        
+        # Attach both plain text and HTML versions
+        part1 = MIMEText(text_content, 'plain')
+        part2 = MIMEText(html_content, 'html')
+        message.attach(part1)
+        message.attach(part2)
+        
+        # Send email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()  # Upgrade connection to secure
+            server.login(sender_email, sender_password)
+            server.send_message(message)
+        
+        logger.info(f"[SUCCESS] Email sent to {teacher_email} from {user_name}")
+        return {
+            "success": True,
+            "action": "email_sent",
+            "message": f"Email sent to the teacher with the question from the user."
+        }
+        
+    except Exception as e:
+        logger.error(f"[ERROR] Failed to send email: {str(e)}")
+        return {
+            "success": False,
+            "action": "email_failed",
+            "message": f"Failed to send email.",
+            "from": sender_email,
+            "to": teacher_email,
+        }
 
 
 def create_group_formation_request(user_input: str, user_name: str) -> dict:
@@ -129,34 +203,70 @@ def answer_ask():
     memory_context = request.form.get('memory_context', '')
     user_context = request.form.get('user_context', '')
     
-    logger.info(f"Request from {user_name}: {user_input[:50]}...")
+    logger.info(f"Request from {user_name}: {user_input}")
     
     with model_lock:
-        # Detect user intent using rule-based function
-        detected_intent = get_intent(user_input.lower())
-        action_result = None
+        global pending_intent
+
         action_taken = False
+        action_result = None
+
+        confirm_yes = {"yes", "y", "yeah", "yep", "ok", "okay", "sure", "confirm"}
+        confirm_no = {"no", "n", "nope", "cancel", "stop"}
+        normalized_input = user_input.strip().lower() if user_input else ""
+
+        # If we had a pending intent from the previous message, act only after explicit confirmation
+        if pending_intent["intent"]:
+            if normalized_input in confirm_yes:
+                logger.info(f"TAKING ACTION AFTER CONFIRMATION: {pending_intent['pretty']}")
+                confirmed_intent_pretty = pending_intent["pretty"]
+                if pending_intent["intent"] == "send_email":
+                    action_result = send_email_to_teacher(pending_intent["text"], pending_intent["user_name"])
+                    action_taken = True
+                elif pending_intent["intent"] == "make_group":
+                    action_result = create_group_formation_request(pending_intent["text"], pending_intent["user_name"])
+                    action_taken = True
+                elif pending_intent["intent"] == "get_information":
+                    action_result = retrieve_information_request(pending_intent["text"], pending_intent["user_name"])
+                    action_taken = True
+                # Clear pending intent after handling
+                pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None}
+            elif normalized_input in confirm_no:
+                logger.info("Confirmation denied. Clearing pending intent.")
+                pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None}
+
+        # Detect user intent in the current message to set up confirmation for the next turn
+        detected_intent = get_intent(user_input.lower())
+        intent_val = False
+        detected_intent_pretty = None
         
         # Execute actions based on detected intent
         # Only trigger send_email if both verb AND noun are present
         if detected_intent == "send_email":
             detected_intent_pretty = "send an email"
-            action_result = send_email_to_teacher(user_input, user_name)
-            action_taken = True
+            intent_val = True
         elif detected_intent == "make_group":
             detected_intent_pretty = "form groups"
-            action_result = create_group_formation_request(user_input, user_name)
-            action_taken = True
+            intent_val = True
         elif detected_intent == "get_information":
             detected_intent_pretty = "retrieve information"
-            action_result = retrieve_information_request(user_input, user_name)
-            action_taken = True
+            intent_val = True
+
+        # Store pending intent for next user confirmation, including the original text
+        if intent_val:
+            pending_intent = {
+                "intent": detected_intent,
+                "pretty": detected_intent_pretty,
+                "text": user_input,
+                "user_name": user_name,
+            }
         
         messages = [
             {
                 "role": "system",
                 "content": (
                     "You are Quorum, a helpful bot assistant for students and teachers. "
+                    "Your main goal is to perform tasks for students based on their requests. You must ask confirmation before performing a task when an intent is detected. "
                     "You only speak English. "
                     "Only provide personal details if explicitly listed in the provided user information. "
                     "You must never invent, assume, or fabricate schedules, plans, events, classes, or activities. "
@@ -175,26 +285,40 @@ def answer_ask():
         developer_content.append("Trusted user information:")
         developer_content.append(user_context)
 
-        if memory_context:
+        if memory_context and not action_taken:
             developer_content.append("\nRelevant conversation memory:")
             developer_content.append(memory_context)
 
-        if action_taken:
+        if intent_val:
             developer_content.append(
-                f"\nDetected possible intent: {detected_intent_pretty}\n"
-                "If the current user request matches this intent, perform it and confirm briefly. "
-                "Otherwise, ignore this instruction."
+                f"\nDETECTED INTENT: {detected_intent_pretty}\n"
+                "When an intent is detected, do not answer the content of the user's message. "
+                "Ask only for a confirmation with a concise yes/no question about performing that intent. "
+                "Do not provide any other reply until the user answers yes or no."
             )
 
-        messages.append({
+        if action_taken and action_result is not None:
+            developer_content.append(
+                f"\nAction taken: {action_result['action']}\n"
+                f"Result message: {action_result['message']}\n"
+                f"Success: {action_result['success']}\n"
+                f"From: {action_result.get('from', 'N/A')}\n"
+                f"To: {action_result.get('to', 'N/A')}\n"
+            )
+            messages.append({
             "role": "developer",
             "content": "\n".join(developer_content)
-        })
-
-        messages.append({
+            })
+        else:
+            messages.append({
+            "role": "developer",
+            "content": "\n".join(developer_content)
+            })
+            messages.append({
             "role": "user",
             "content": user_input
-        })
+            })
+        
 
         logger.info(messages)
         answer = llm.create_chat_completion(messages=messages)
@@ -202,8 +326,8 @@ def answer_ask():
     response_text = answer["choices"][0]["message"]["content"]
     
     # Format response
-    if action_taken:
-        return f"✅ You want to {detected_intent}. {response_text}"
+    if intent_val:
+        return f"✅ You want to {detected_intent_pretty}. {response_text}"
     else:
         return response_text
 
