@@ -196,6 +196,41 @@ app.logger.setLevel(logging.INFO)
 def hello_world():
     return "Hello world"
 
+@app.route("/summarize", methods=['POST'])
+def summarize_context():
+    """Endpoint dedicated to summarizing memory context."""
+    context = request.form.get('context', '')
+    user_name = request.form.get('user_name', 'User')
+    
+    logger.info(f"Summarization request from {user_name}: {len(context)} chars")
+    
+    summarization_prompt = (
+        f"Please create a SINGLE paragraph that encapsulates the following conversation context, "
+        f"highlighting the user's key preferences, previous questions, and important details in this single paragraph. "
+        f"Keep it concise and under 500 characters.\n\n"
+        f"Context:\n{context}"
+    )
+    
+    with model_lock:
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful summarization assistant. Provide concise, clear summaries."
+            },
+            {
+                "role": "user",
+                "content": summarization_prompt
+            }
+        ]
+        
+        logger.info(f"Summarizing context for {user_name}")
+        answer = llm.create_chat_completion(messages=messages)
+    
+    summary = answer["choices"][0]["message"]["content"]
+    logger.info(f"Summarization complete: {len(context)} chars -> {len(summary)} chars")
+    
+    return summary
+
 @app.route("/ask", methods=['POST'])
 def answer_ask():
     user_input = request.form.get('user_input')
@@ -334,4 +369,5 @@ def answer_ask():
 
 if __name__ == '__main__':
     # Disable reloader to avoid subprocess buffering issues with logging
-    app.run(debug=True, use_reloader=False)
+    # Listen on 0.0.0.0 to allow connections from other containers/services
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
