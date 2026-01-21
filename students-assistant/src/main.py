@@ -34,6 +34,7 @@ from long_term_memory import retrieve_relevant_memories, format_long_term_memory
 
 
 LLM_ENDPOINT = os.getenv("LLM_ENDPOINT", "http://flask_app_llm:5000/ask")
+logger.info(f"Using LLM ENDPOINT: {LLM_ENDPOINT}")
 
 app = App(plugins=[DevToolsPlugin()])
 
