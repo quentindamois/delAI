@@ -202,6 +202,7 @@ app.logger.addHandler(console_handler)
 app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 
+
 @app.route("/")
 def hello_world():
     return "Hello world"

@@ -42,6 +42,40 @@ discord_intents = discord.Intents.default()
 discord_intents.message_content = True
 discord_client = discord.Client(intents=discord_intents)
 
+async def summarize_memory_context(context: str, user_name: str) -> str:
+    """
+    Use the generative model to summarize memory context if it exceeds MAX_CONTEXT_LENGTH.
+    Returns the original context if it's short enough, or a summary otherwise.
+    """
+    if len(context) <= MAX_CONTEXT_LENGTH:
+        return context
+    
+    logger.info(
+        "Context too long (%d chars), generating summary for user %s",
+        len(context),
+        user_name
+    )
+    
+    
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                SUMMARIZATION_ENDPOINT,
+                data={
+                    "context": context,
+                    "user_name": user_name,
+                },
+            )
+            response.raise_for_status()
+            summary = response.text
+            logger.info("Context summarized: %d chars -> %d chars", len(context), len(summary))
+            return summary
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "Failed to summarize context (%s), using original",
+            exc.__class__.__name__
+        )
+        return context
 
 async def fetch_llm_response(message_text: str, user_name: str) -> str:
     short_term_interactions = get_last_interactions(user_name)
