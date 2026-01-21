@@ -9,8 +9,6 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from dotenv import load_dotenv
-load_dotenv()
 
 # Configure logging to both console and file
 log_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
@@ -68,9 +66,9 @@ def send_email_to_teacher(user_input: str, user_name: str) -> dict:
     # Email configuration (use environment variables in production)
     smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')  # e.g., smtp.gmail.com, smtp.office365.com
     smtp_port = int(os.getenv('SMTP_PORT', '587'))  # 587 for TLS, 465 for SSL
-    sender_email = os.getenv('MAIL_FROM', 'your-email@example.com')
-    sender_password = os.getenv('MAIL_PASSWORD', 'your-password')
-    teacher_email = os.getenv('MAIL_TO', 'teacher@example.com')
+    sender_email = os.getenv('SENDER_EMAIL', 'your-email@example.com')
+    sender_password = os.getenv('SENDER_PASSWORD', 'your-password')
+    teacher_email = os.getenv('TEACHER_EMAIL', 'teacher@example.com')
     
     try:
         # Create message
@@ -160,15 +158,7 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
 keyword_dictionnary = {
     "send_email":{"verb":["send", "sent", "write"], "noun":["teacher", "question", "help"]},
     "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]},
-    # Restrict information intent to school/docs/file-related asks so we don't over-trigger
-    "get_information":{
-        "verb":["look for", "find", "search"],
-        "noun":[
-            "school", "campus", "calendar",
-            "file", "document", "doc", "docs", "documentation", "pdf", "guide", "policy",
-            "assignment", "brief", "instructions", "manual"
-        ]
-    },
+    "get_information":{"verb":["need", "want", "look for", "get", "know", "ask about"], "noun":["what", "information", "help", "info"]},
 }
 
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"
@@ -202,10 +192,44 @@ app.logger.addHandler(console_handler)
 app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 
-
 @app.route("/")
 def hello_world():
     return "Hello world"
+
+@app.route("/summarize", methods=['POST'])
+def summarize_context():
+    """Endpoint dedicated to summarizing memory context."""
+    context = request.form.get('context', '')
+    user_name = request.form.get('user_name', 'User')
+    
+    logger.info(f"Summarization request from {user_name}: {len(context)} chars")
+    
+    summarization_prompt = (
+        f"Please create a SINGLE paragraph that encapsulates the following conversation context, "
+        f"highlighting the user's key preferences, previous questions, and important details in this single paragraph. "
+        f"Keep it concise and under 500 characters.\n\n"
+        f"Context:\n{context}"
+    )
+    
+    with model_lock:
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful summarization assistant. Provide concise, clear summaries."
+            },
+            {
+                "role": "user",
+                "content": summarization_prompt
+            }
+        ]
+        
+        logger.info(f"Summarizing context for {user_name}")
+        answer = llm.create_chat_completion(messages=messages)
+    
+    summary = answer["choices"][0]["message"]["content"]
+    logger.info(f"Summarization complete: {len(context)} chars -> {len(summary)} chars")
+    
+    return summary
 
 @app.route("/ask", methods=['POST'])
 def answer_ask():
@@ -345,4 +369,5 @@ def answer_ask():
 
 if __name__ == '__main__':
     # Disable reloader to avoid subprocess buffering issues with logging
-    app.run(debug=True, use_reloader=False)
+    # Listen on 0.0.0.0 to allow connections from other containers/services
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
