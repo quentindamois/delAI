@@ -21,7 +21,6 @@ from user_context import (
     format_user_context,
     update_user_info_from_message
 )
-from rag_utils import search as search_rag, format_search_results, is_rag_available
 
 # Configure logging to output immediately
 logging.basicConfig(
@@ -40,7 +39,6 @@ logger.info(f"Using LLM ENDPOINT: {LLM_ENDPOINT}")
 SUMMARIZATION_ENDPOINT = os.getenv("SUMMARIZATION_ENDPOINT", "http://127.0.0.1:5000/summarize")
 
 MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "400"))
-ENABLE_RAG = os.getenv("ENABLE_RAG", "1").lower() in {"1", "true", "yes"}
 
 app = App(plugins=[DevToolsPlugin()])
 
@@ -64,7 +62,7 @@ async def summarize_memory_context(context: str, user_name: str) -> str:
     )
     
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=300) as client:
             response = await client.post(
                 SUMMARIZATION_ENDPOINT,
                 data={
@@ -95,32 +93,19 @@ async def fetch_llm_response(message_text: str, user_name: str) -> str:
 
     user_context = format_user_context(get_user_info(user_name))
 
-    # Add RAG results if available
-    rag_context = ""
-    if ENABLE_RAG and is_rag_available():
-        try:
-            rag_results = search_rag(message_text, top_k=1)
-            if rag_results:
-                rag_context = format_search_results(rag_results)
-                logger.info(f"RAG found {len(rag_results)} relevant documents for user {user_name}")
-        except Exception as e:
-            logger.warning(f"Error retrieving RAG results: {e}")
-
-    # Combine all contexts
-    combined_context = f"{memory_context}{rag_context}"
-
     # Summarize memory context if it's too long
-    combined_context = await summarize_memory_context(combined_context, user_name)
+    memory_context = await summarize_memory_context(memory_context, user_name)
 
-    print("Memory context sent to LLM:", combined_context)
+    print("Memory context sent to LLM:", memory_context)
     
-    async with httpx.AsyncClient(timeout=120) as client:
+    # Increased timeout to 300 seconds for LLM responses (especially for RAG queries)
+    async with httpx.AsyncClient(timeout=300) as client:
         response = await client.post(
             LLM_ENDPOINT,
             data={
                 "user_input": message_text,
                 "user_name": user_name,
-                "memory_context": combined_context,
+                "memory_context": memory_context,
                 "user_context": user_context,
             },
         )
