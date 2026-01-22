@@ -78,13 +78,6 @@ def send_email_to_teacher(user_input: str, user_name: str) -> dict:
     sender_email = sender_email.encode('utf-8').decode('utf-8-sig')
     sender_password = sender_password.encode('utf-8').decode('utf-8-sig')
     teacher_email = teacher_email.encode('utf-8').decode('utf-8-sig')
-
-    # Debug logging for credential content (repr to surface hidden bytes)
-    logger.info("EMAIL CONFIG: server=%s port=%s from=%r to=%r pass_len=%d", smtp_server, smtp_port, sender_email, teacher_email, len(sender_password))
-    logger.info("From repr: %r", sender_email)
-    logger.info("Pass repr: %r", sender_password)
-    logger.info("To repr: %r", teacher_email)
-    logger.info("SMTP Server: %s:%d", smtp_server, smtp_port)
     
     try:
         # Create message with SMTP policy; subject encoded as RFC2047 for safety
@@ -123,10 +116,7 @@ This email was sent automatically by the Quorum student assistant bot.
         part1 = MIMEText(text_content, 'plain', _charset='utf-8')
         part2 = MIMEText(html_content, 'html', _charset='utf-8')
         message.attach(part1)
-        message.attach(part2)
-
-        logger.info(message.as_string())
-        
+        message.attach(part2)        
         # Send email
         # Force ASCII-safe local hostname to avoid non-ASCII encoding in EHLO
         with smtplib.SMTP(smtp_server, smtp_port, local_hostname="localhost") as server:
@@ -151,7 +141,9 @@ This email was sent automatically by the Quorum student assistant bot.
         return {
             "success": True,
             "action": "email_sent",
-            "message": f"[SUCCESS] Email sent to {teacher_email} from {user_name}"
+            "message": f"[SUCCESS] Email sent to {teacher_email} from {user_name}",
+            "from": sender_email,
+            "to": teacher_email,
         }
         
     except Exception as e:
