@@ -12,6 +12,9 @@ from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from email import policy
 from dotenv import load_dotenv
+import faiss
+import pickle
+import numpy as np
 load_dotenv()
 
 # Configure logging to both console and file
@@ -49,6 +52,42 @@ try:
     llm = Llama(model_path="./models/llama-3.2-1b-instruct-q8_0.gguf", verbose=False)
 except:
     llm = Llama(model_path="./models/ibm-granite_granite-3.3-2b-instruct-Q3_K_M.gguf", verbose=False)
+
+# Load embedding model for RAG (same as in long_term_memory.py)
+try:
+    embedding_model = Llama(
+        model_path="./models/nomic-embed-text-v1.5.Q4_K_M.gguf",
+        embedding=True,
+        verbose=False,
+    )
+except Exception as e:
+    logger.warning(f"Could not load embedding model for RAG: {e}")
+    embedding_model = None
+
+# Load FAISS index and RAG database
+rag_database_loaded = False
+faiss_index = None
+all_chunks = []
+chunk_metadata = []
+
+try:
+    rag_dir = "./rag_database"
+    if os.path.exists(os.path.join(rag_dir, "faiss_index.bin")):
+        faiss_index = faiss.read_index(os.path.join(rag_dir, "faiss_index.bin"))
+        
+        with open(os.path.join(rag_dir, "chunks.pkl"), "rb") as f:
+            all_chunks = pickle.load(f)
+        
+        with open(os.path.join(rag_dir, "metadata.pkl"), "rb") as f:
+            chunk_metadata = pickle.load(f)
+        
+        rag_database_loaded = True
+        logger.info(f"RAG database loaded successfully. Total chunks: {len(all_chunks)}")
+    else:
+        logger.warning("RAG database files not found in rag_database directory")
+except Exception as e:
+    logger.error(f"Error loading RAG database: {e}")
+    rag_database_loaded = False
 
 # Lock pour empêcher les accès concurrents aux modèles
 model_lock = threading.Lock()
@@ -168,14 +207,69 @@ def create_group_formation_request(user_input: str, user_name: str) -> dict:
     }
 
 
+def search_rag(query: str, top_k: int = 2) -> list:
+    """
+    Search the RAG database for relevant documents.
+    Returns a list of dicts with 'text' and 'source' fields.
+    """
+    if not rag_database_loaded or faiss_index is None or embedding_model is None:
+        logger.warning("RAG database not available for search")
+        return []
+    
+    try:
+        # Get embedding for the query
+        query_embedding = embedding_model.embed(query)
+        query_emb = np.array([query_embedding], dtype=np.float32)
+        
+        # Search the FAISS index
+        D, I = faiss_index.search(query_emb, top_k)
+        
+        results = []
+        for idx in I[0]:
+            if 0 <= idx < len(all_chunks):
+                results.append({
+                    "text": all_chunks[idx],
+                    "source": chunk_metadata[idx].get("source", "Unknown") if idx < len(chunk_metadata) else "Unknown"
+                })
+        
+        logger.info(f"RAG search found {len(results)} relevant documents for query: {query[:100]}")
+        return results
+    
+    except Exception as e:
+        logger.error(f"Error searching RAG database: {e}")
+        return []
+
+
 def retrieve_information_request(user_input: str, user_name: str) -> dict:
-    """Create a request to retrieve information from RAG."""
-    # TODO: Implement information retrieval logic
-    logger.info(f"[ACTION] Creating information retrieval request by {user_name}: {user_input[:100]}")
+    """Retrieve information from RAG database."""
+    logger.info(f"[ACTION] Retrieving information from RAG for {user_name}: {user_input[:100]}")
+    
+    # Search the RAG database
+    rag_results = search_rag(user_input, top_k=2)
+    
+    if not rag_results:
+        logger.warning(f"No relevant documents found in RAG for query: {user_input[:100]}")
+        return {
+            "success": False,
+            "action": "information_not_found",
+            "message": "No relevant documents found in the knowledge base.",
+            "results": []
+        }
+    
+    # Format results for the response
+    formatted_results = []
+    for result in rag_results:
+        formatted_results.append({
+            "text": result["text"],
+            "source": result["source"]
+        })
+    
+    logger.info(f"[SUCCESS] Retrieved {len(formatted_results)} documents from RAG")
     return {
         "success": True,
-        "action": "information_requested",
-        "message": "Information retrieval request sent to students."
+        "action": "information_retrieved",
+        "message": f"Found {len(formatted_results)} relevant documents.",
+        "results": formatted_results
     }
 
 
@@ -364,9 +458,22 @@ def answer_ask():
                 f"\nAction taken: {action_result['action']}. "
                 f"Result message: {action_result['message']}. "
                 f"Success: {action_result['success']}. "
-                f"From: {action_result.get('from', 'N/A')}. "
-                f"To: {action_result.get('to', 'N/A')}. "
             )
+            
+            # If it's a RAG retrieval, add the results context
+            if action_result.get('action') == 'information_retrieved' and action_result.get('results'):
+                rag_context = "Here are the relevant documents from the knowledge base:\n\n"
+                for i, result in enumerate(action_result['results'], 1):
+                    rag_context += f"Document {i} (Source: {result['source']}):\n{result['text']}\n\n"
+                system_content.append(rag_context)
+            
+            # For email actions, add from/to info
+            if action_result.get('action') in ['email_sent', 'email_failed']:
+                system_content.append(
+                    f"From: {action_result.get('from', 'N/A')}. "
+                    f"To: {action_result.get('to', 'N/A')}. "
+                )
+            
             messages = [
                 {
                 "role": "system",
