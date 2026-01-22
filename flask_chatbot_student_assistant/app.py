@@ -9,6 +9,8 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
+from email import policy
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -71,11 +73,23 @@ def send_email_to_teacher(user_input: str, user_name: str) -> dict:
     sender_email = os.getenv('MAIL_FROM', 'your-email@example.com')
     sender_password = os.getenv('MAIL_PASSWORD', 'your-password')
     teacher_email = os.getenv('MAIL_TO', 'teacher@example.com')
+
+    # Strip potential BOM or hidden characters from env inputs
+    sender_email = sender_email.encode('utf-8').decode('utf-8-sig')
+    sender_password = sender_password.encode('utf-8').decode('utf-8-sig')
+    teacher_email = teacher_email.encode('utf-8').decode('utf-8-sig')
+
+    # Debug logging for credential content (repr to surface hidden bytes)
+    logger.info("EMAIL CONFIG: server=%s port=%s from=%r to=%r pass_len=%d", smtp_server, smtp_port, sender_email, teacher_email, len(sender_password))
+    logger.info("From repr: %r", sender_email)
+    logger.info("Pass repr: %r", sender_password)
+    logger.info("To repr: %r", teacher_email)
+    logger.info("SMTP Server: %s:%d", smtp_server, smtp_port)
     
     try:
-        # Create message
-        message = MIMEMultipart('alternative')
-        message['Subject'] = f'Question from student: {user_name}'
+        # Create message with SMTP policy; subject encoded as RFC2047 for safety
+        message = MIMEMultipart('alternative', policy=policy.SMTP)
+        message['Subject'] = str(Header(f'Question from student: {user_name}', 'utf-8'))
         message['From'] = sender_email
         message['To'] = teacher_email
         
@@ -105,23 +119,39 @@ This email was sent automatically by the Quorum student assistant bot.
 </html>
         """
         
-        # Attach both plain text and HTML versions
-        part1 = MIMEText(text_content, 'plain')
-        part2 = MIMEText(html_content, 'html')
+        # Attach both plain text and HTML versions with UTF-8 encoding
+        part1 = MIMEText(text_content, 'plain', _charset='utf-8')
+        part2 = MIMEText(html_content, 'html', _charset='utf-8')
         message.attach(part1)
         message.attach(part2)
+
+        logger.info(message.as_string())
         
         # Send email
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
+        # Force ASCII-safe local hostname to avoid non-ASCII encoding in EHLO
+        with smtplib.SMTP(smtp_server, smtp_port, local_hostname="localhost") as server:
+            logger.info("SMTP connecting: starttls -> login -> sendmail")
             server.starttls()  # Upgrade connection to secure
+
+            # Additional diagnostics for auth encoding
+            try:
+                sender_email.encode('ascii')
+                sender_password.encode('ascii')
+            except Exception as enc_err:
+                logger.error("Auth contains non-ascii chars: %s", enc_err)
+
+            logger.info("SMTP login...")
             server.login(sender_email, sender_password)
-            server.send_message(message)
+            logger.info("SMTP login OK, sending mail...")
+            # send as bytes; headers are encoded-word, body utf-8 encoded
+            server.sendmail(sender_email, [teacher_email], message.as_bytes())
+            logger.info("SMTP sendmail done")
         
         logger.info(f"[SUCCESS] Email sent to {teacher_email} from {user_name}")
         return {
             "success": True,
             "action": "email_sent",
-            "message": f"Email sent to the teacher with the question from the user."
+            "message": f"[SUCCESS] Email sent to {teacher_email} from {user_name}"
         }
         
     except Exception as e:
@@ -129,7 +159,7 @@ This email was sent automatically by the Quorum student assistant bot.
         return {
             "success": False,
             "action": "email_failed",
-            "message": f"Failed to send email.",
+            "message": f"[ERROR] Failed to send email: {str(e)}",
             "from": sender_email,
             "to": teacher_email,
         }
@@ -305,32 +335,28 @@ def answer_ask():
                 "user_name": user_name,
             }
         
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are Quorum, a helpful bot assistant for students and teachers. "
-                    "Your main goal is to perform tasks for students based on their requests. You must ask confirmation before performing a task when an intent is detected. "
-                    "You only speak English. "
-                    "Only provide personal details if explicitly listed in the provided user information. "
-                    "You must never invent, assume, or fabricate schedules, plans, events, classes, or activities. "
-                    "If this information is not explicitly provided, you must say you do not have it. "
-                    "You must not add examples, guesses, or placeholders. "
-                    "Do not answer with partially related or generic user details. "
-                    "Be friendly and professional. "
+        system_content = [
+                    "You are Quorum, a helpful bot assistant for students and teachers. ",
+                    "Your main goal is to perform tasks for students based on their requests. You must ask user confirmation before performing a task when an intent is detected. ",
+                    "You must confirm when an action has been done successfully or not. ",
+                    "You only speak English. ",
+                    "Only provide personal details if explicitly listed in the provided user information. ",
+                    "You must never invent, assume, or fabricate schedules, plans, events, classes, or activities. ",
+                    "If this information is not explicitly provided, you must say you do not have it. ",
+                    "You must not add examples, guesses, or placeholders. ",
+                    "Do not answer with partially related or generic user details. ",
+                    "Be friendly and professional. ",
                     "Keep your answers brief."
-                    
-                )
-            }
-        ]
+                   ]
+        
+        
 
         developer_content = []
 
-        developer_content.append("Trusted user information:")
-        developer_content.append(user_context)
+        if not action_taken:
+            developer_content.append(user_context)
 
         if memory_context and not action_taken:
-            developer_content.append("\nRelevant conversation memory:")
             developer_content.append(memory_context)
 
         if intent_val:
@@ -342,18 +368,26 @@ def answer_ask():
             )
 
         if action_taken and action_result is not None:
-            developer_content.append(
-                f"\nAction taken: {action_result['action']}\n"
-                f"Result message: {action_result['message']}\n"
-                f"Success: {action_result['success']}\n"
-                f"From: {action_result.get('from', 'N/A')}\n"
-                f"To: {action_result.get('to', 'N/A')}\n"
+            system_content.append(
+                f"\nAction taken: {action_result['action']}. "
+                f"Result message: {action_result['message']}. "
+                f"Success: {action_result['success']}. "
+                f"From: {action_result.get('from', 'N/A')}. "
+                f"To: {action_result.get('to', 'N/A')}. "
             )
-            messages.append({
-            "role": "developer",
-            "content": "\n".join(developer_content)
-            })
+            messages = [
+                {
+                "role": "system",
+                "content": "\n".join(system_content)
+                }
+            ]
         else:
+            messages = [
+                {
+                "role": "system",
+                "content": "\n".join(system_content)
+                }
+            ]
             messages.append({
             "role": "developer",
             "content": "\n".join(developer_content)
