@@ -1,0 +1,80 @@
+import pandas as pd
+import re
+from dotenv import load_dotenv
+import gspread
+import os
+import requests
+import re
+import time
+import random 
+
+
+load_dotenv()
+# used to get the id to get link to spreadsheet : https://stackoverflow.com/questions/53021610/python-gspread-how-to-get-a-spreadsheet-url-path-in-after-i-create-it
+path_to_credential = os.environ["PATH_CREDENTIAL"]
+
+gc = gspread.service_account(filename=path_to_credential)
+
+
+def create_group_spreadsheet(url_name, size_class, group_size, name_project="groupe projet"):
+    ### We first need to extract the link from the message ###
+    try:
+        ### We get the number of team to be filled ###
+        nb_team = (size_class //  group_size) + (1 if size_class %  group_size != 0 else 0)
+        ### we create a new google sheet ###
+        sh = gc.open_by_url(url_name)
+
+        time.sleep(random.randint(2,6))
+        ### We create a new Worksheet ###
+        worksheet = sh.get_worksheet(0)
+        worksheet.update_title(name_project)
+
+        time.sleep(random.randint(2,6))
+        ### We put the name of the project at the top right corner of the spread sheet ###
+        worksheet.update_cell(1, 1, name_project)
+
+        ### We add the name of theam on the left of the worksheet ###
+        for i in range(2, nb_team + 2):
+            time.sleep(random.randint(2,6))
+            worksheet.update_cell(i, 1, f"team {i - 1}")
+
+        ### We add the name for the column of each members ###
+        for i in range(2, group_size + 2):
+            time.sleep(random.randint(2,6))
+            worksheet.update_cell(1, i, f"student {i - 1}")
+        res = f"[SUCCESS] the google sheet are avaible at {url_name}"
+    except:
+        res = f"[ERROR] {url_name} could not be edited."
+    return res
+
+
+def generate_csv(nb_team, size_team):
+    tem_dict = dict(name_team=list(map(lambda a: f"team {a}", range(1, nb_team + 1))))
+    for i in range(1, size_team + 1):
+        tem_dict[f"group member {i}"] = [""] * nb_team
+    res_df = pd.DataFrame(tem_dict)
+    return res_df
+
+
+
+
+
+def create_group_formation_request(text):
+    regex_nb = r"(?P<number_of_team>\d*)?\s*([Gg]+[rR]+[Oo]+[uU]+[pP]+[eE]?|[Tt]+[eE]+[aA]+[mM]+)[sS]?\s*[Oo]?[fF]?\s*(?P<size_of_team>\d*)"
+    list_tag = ["number_of_team", "size_of_team"]
+    regex_link = r".*(?P<ggl_sheet_link>https:\/\/docs\.google\.com\/spreadsheets\/d\/\w+\/?).*"
+    reg_out = re.search(regex_nb, text)
+    reg_out_link = re.search(regex_link, text)
+
+    if reg_out and reg_out.group("number_of_team") != "" and reg_out.group("size_of_team") != "" and reg_out_link.group("ggl_sheet_link"):
+        tem = create_group_spreadsheet(int(reg_out.group("number_of_team")), int(reg_out.group("size_of_team")))
+        res = {"success":"[SUCCESS]" in tem, "action":"google_sheet_filled" if "[SUCCESS]" in tem else "google_sheet_failed", "message":tem}
+    elif not(reg_out):
+        res = "Error: the number of group and the size of group have not been given." + "" if reg_out_link else " No link to a google sheet was provided."
+    elif reg_out:
+        list_tag_no_int = list(map(lambda b: re.sub("_", " ", b), filter(lambda a: reg_out.group(a) == "", list_tag)))
+        res = f"Error: the following information{ 's are' if len(list_tag_no_int) > 1 else ' is'} missing : {','.join(list_tag_no_int)}."+ "" if reg_out_link else " No link to a google sheet was provided."
+    elif not(reg_out_link):
+        res = f"Error: no link to a google sheet was provided."
+    return res
+    
