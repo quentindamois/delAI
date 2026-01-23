@@ -241,7 +241,7 @@ def search_rag(query: str, top_k: int = 2) -> list:
 
 
 def retrieve_information_request(user_input: str, user_name: str) -> dict:
-    """Retrieve information from RAG database and generate response using LLM."""
+    """Retrieve information from RAG database."""
     logger.info(f"[ACTION] Retrieving information from RAG for {user_name}: {user_input[:100]}")
     
     # Search the RAG database
@@ -256,48 +256,19 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
             "results": []
         }
     
-    # Format results
+    # Format results for the response
     formatted_results = []
-    rag_context = "Based on the following documents from the knowledge base:\n\n"
-    
-    for i, result in enumerate(rag_results, 1):
+    for result in rag_results:
         formatted_results.append({
             "text": result["text"],
             "source": result["source"]
         })
-        rag_context += f"Document {i} (Source: {result['source']}):\n{result['text']}\n\n"
     
-    # Use LLM to generate a response based on the RAG results
-    try:
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a helpful assistant answering student questions based on provided documents. "
-                    "Use the documents provided to answer the user's question accurately and concisely. "
-                    "Always cite the source document if relevant. "
-                    "If the documents don't contain enough information, say so clearly."
-                )
-            },
-            {
-                "role": "user",
-                "content": f"{rag_context}\n\nUser question: {user_input}"
-            }
-        ]
-        
-        logger.info(f"Generating LLM response for RAG results (user: {user_name})")
-        answer = llm.create_chat_completion(messages=messages)
-        llm_response = answer["choices"][0]["message"]["content"]
-            
-    except Exception as e:
-        logger.error(f"Error generating LLM response for RAG: {e}")
-        llm_response = "I found relevant documents but encountered an error generating a response."
-    
-    logger.info(f"[SUCCESS] Retrieved {len(formatted_results)} documents from RAG and generated response")
+    logger.info(f"[SUCCESS] Retrieved {len(formatted_results)} documents from RAG")
     return {
         "success": True,
         "action": "information_retrieved",
-        "message": llm_response,
+        "message": f"Found {len(formatted_results)} relevant documents.",
         "results": formatted_results
     }
 
@@ -483,17 +454,18 @@ def answer_ask():
             )
 
         if action_taken and action_result is not None:
-            # If it's a RAG retrieval, the LLM response is already generated
-            if action_result.get('action') == 'information_retrieved':
-                response_text = action_result['message']
-                logger.info(f"Using LLM-generated response from RAG retrieval")
-                return response_text
-            
             system_content.append(
                 f"\nAction taken: {action_result['action']}. "
                 f"Result message: {action_result['message']}. "
                 f"Success: {action_result['success']}. "
             )
+            
+            # If it's a RAG retrieval, add the results context
+            if action_result.get('action') == 'information_retrieved' and action_result.get('results'):
+                rag_context = "Here are the relevant documents from the knowledge base:\n\n"
+                for i, result in enumerate(action_result['results'], 1):
+                    rag_context += f"Document {i} (Source: {result['source']}):\n{result['text']}\n\n"
+                system_content.append(rag_context)
             
             # For email actions, add from/to info
             if action_result.get('action') in ['email_sent', 'email_failed']:
@@ -540,5 +512,4 @@ def answer_ask():
 if __name__ == '__main__':
     # Disable reloader to avoid subprocess buffering issues with logging
     # Listen on 0.0.0.0 to allow connections from other containers/services
-    # Increased timeout for long-running requests (especially RAG queries)
     app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
