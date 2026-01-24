@@ -1,0 +1,14 @@
+# inspired by https://www.baeldung.com/ops/multiple-dockerfiles
+# also inspired by https://andrewhalil.com/2022/01/21/cross-container-api-calls-in-a-docker-image/
+
+services:
+  streamlit_test_interface:
+    build: ./streamlit_interface
+    ports:
+     - "8501:8501"
+    depends_on:
+      - flask_app_llm
+  flask_app_llm:
+    build: ./flask_chatbot_student_assistant
+    ports:
+      - "5000:5000"
