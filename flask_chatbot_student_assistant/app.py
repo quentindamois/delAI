@@ -272,7 +272,7 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
 
 keyword_dictionnary = {
     "send_email":{"verb":["send", "sent", "write"], "noun":["teacher", "question", "help"]},
-    "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]},
+    "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team", "teams", "groups"]},
     "get_information":{
         "verb":["look for", "find", "search"],
         "noun":[
