@@ -15,9 +15,8 @@ from llama_cpp import Llama
 logger = logging.getLogger(__name__)
 
 # Paths
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-RAG_DIR = BASE_DIR / "flask_chatbot_student_assistant" / "rag_database"
-MODEL_PATH = BASE_DIR / "flask_chatbot_student_assistant" / "models" / "nomic-embed-text-v1.5.Q4_K_M.gguf"
+RAG_DIR = "./rag_database"
+MODEL_PATH = "./models/nomic-embed-text-v1.5.Q4_K_M.gguf"
 
 # Configuration
 MAX_RESULTS = int(os.getenv("RAG_MAX_RESULTS", "5"))
