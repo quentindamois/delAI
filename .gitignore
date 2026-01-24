@@ -185,3 +185,5 @@ cython_debug/
 *.env
 delAIvenv/
 students-assistant/conversation_log.csv
+
+delai-*.json
