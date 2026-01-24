@@ -44,9 +44,9 @@ def create_group_spreadsheet(url_name, nb_team, group_size, name_project="group 
         for i in range(2, group_size + 2):
             time.sleep(random.randint(1,3))
             worksheet.update_cell(1, i, f"student {i - 1}")
-        res = f"[SUCCESS] the google sheet is avaible at {url_name}"
-    except:
-        res = f"[ERROR] {url_name} could not be edited."
+        res = f"[SUCCESS] The google sheet has been edited"
+    except Exception as e:
+        res = f"[ERROR] The google sheet could not be edited due to an unexpected error"
     return res
 
 
@@ -58,6 +58,13 @@ def generate_csv(nb_team, size_team):
     return res_df
 
 
+
+
+
+
+def vary_instruction():
+    list_instruction = ["I am sorry, i did not understand, could explain it in the format : 'number_of_group' groups of 'number_of_person' in each group.", "I only understand the format X group of Y with X being the number of group and Y the number of person"]
+    return random.choice(list_instruction)
 
 
 
@@ -74,14 +81,14 @@ def create_group(text):
         tem = create_group_spreadsheet(reg_out_link.group("ggl_sheet_link"), int(reg_out.group("number_of_team")), int(reg_out.group("size_of_team")), name_project)
         res = {"success":"[SUCCESS]" in tem, "action":"group_created" if "[SUCCESS]" in tem else "group_failed", "message":tem}
     elif not(reg_out):
-        res = {"success":False, "action":"group_failed", "message":"[Error] the number of group and the size of group have not been given." + ("" if reg_out_link else " No link to a google sheet was provided.")}
+        res = {"success":False, "action":"group_failed", "message":f"[Error] {vary_instruction()} The number of group and the size of group have not been given." + ("" if reg_out_link else " No link to a google sheet was provided.")}
         return res
     elif reg_out and (reg_out.group("number_of_team") is None or reg_out.group("size_of_team") is None):
         list_tag_no_int = list(map(lambda b: re.sub("_", " ", b), filter(lambda a: reg_out.group(a) is None, list_tag)))
-        res = {"success":False, "action":"group_failed", "message":f"[Error] the following information{ 's are' if len(list_tag_no_int) > 1 else ' is'} missing : {','.join(list_tag_no_int)}."+ ("" if reg_out_link else " No link to a google sheet was provided.")}
+        res = {"success":False, "action":"group_failed", "message":f"[Error] {vary_instruction()} The following information{ 's are' if len(list_tag_no_int) > 1 else ' is'} missing : {','.join(list_tag_no_int)}."+ ("" if reg_out_link else " No link to a google sheet was provided.")}
     elif not(reg_out_link):
-        res = {"success":False, "action":"group_failed", "message":f"[Error] no link to a google sheet was provided."}
+        res = {"success":False, "action":"group_failed", "message":f"[Error] No link to a google sheet was provided."}
     else:
-        res = {"success":False, "action":"group_failed", "message":f"[Error] could not fill the google sheet."}
+        res = {"success":False, "action":"group_failed", "message":f"[Error] {vary_instruction()} I could not fill the google sheet."}
     return res
     
