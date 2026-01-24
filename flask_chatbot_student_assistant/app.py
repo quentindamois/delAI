@@ -18,6 +18,21 @@ import numpy as np
 from group_creator import create_group
 load_dotenv()
 
+
+from conversation_logger import (
+    init_csv,
+    log_user_message,
+    log_bot_message,
+    get_last_interactions
+)
+from user_context import (
+    init_user_file,
+    get_user_info,
+    format_user_context,
+    update_user_info_from_message
+)
+
+
 # Configure logging to both console and file
 log_formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
 
@@ -100,6 +115,8 @@ pending_intent = {
     "text": None,
     "user_name": None,
 }
+
+### The function used to fulfill an intent ###
 
 
 # Action handlers
@@ -199,7 +216,6 @@ This email was sent automatically by the Quorum student assistant bot.
 
 def create_group_formation_request(user_input: str, user_name: str) -> dict:
     """Create a request for students to form groups."""
-    # TODO: Implement group formation logic (database, notifications, etc.)
     logger.info(f"[ACTION] Creating group formation request by {user_name}: {user_input[:100]}")
     return create_group(user_input)
 
@@ -302,6 +318,7 @@ def gen_regex():
 
 gen_regex()
 
+
 def get_intent(text):
     list_detected_intent =  list(filter(lambda a: re.search(keyword_dictionnary[a], text), keyword_dictionnary.keys()))
     logger.info(f"Intent detected: {list_detected_intent}")
@@ -317,6 +334,119 @@ app.logger.setLevel(logging.INFO)
 @app.route("/")
 def hello_world():
     return "Hello world"
+
+
+### Creation of of a summary ###
+
+
+from long_term_memory import retrieve_relevant_memories, format_long_term_memory
+
+
+MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "400"))
+
+
+
+def summarize_memory_context(context: str, user_name: str) -> str:
+    """
+    Use the generative model to summarize memory context if it exceeds MAX_CONTEXT_LENGTH.
+    Returns the original context if it's short enough, or a summary otherwise.
+    """
+    if len(context) <= MAX_CONTEXT_LENGTH:
+        return context
+    
+    logger.info(
+        "Context too long (%d chars), generating summary for user %s",
+        len(context),
+        user_name
+    )
+    
+    try:
+        summary = gen_context(context, user_name)
+        logger.info("Context summarized: %d chars -> %d chars", len(context), len(summary))
+        return summary
+    except Exception as exc:
+        logger.warning(
+            "Failed to summarize context (%s), using original",
+            exc.__class__.__name__
+        )
+        return context
+
+
+def format_interaction_blocks(interactions: list[tuple[str, str]]) -> str:
+    blocks = []
+    for user_msg, bot_msg in interactions:
+        blocks.append(
+            f"User message: {user_msg}\n"
+            f"Agent response: {bot_msg}"
+        )
+    return "\n\n".join(blocks)
+
+def format_short_term_memory(interactions: list[tuple[str, str]]) -> str:
+    if not interactions:
+        return ""
+
+    content = format_interaction_blocks(interactions)
+
+    return (
+        "Here are the most recent interactions you had with the user.\n"
+        f"{content}\n\n"
+    )
+
+def create_context(user_name, message_text):
+    short_term_interactions = get_last_interactions(user_name)
+    short_term_context = format_short_term_memory(short_term_interactions)
+
+    long_term_memories = retrieve_relevant_memories(user_name, message_text)
+    long_term_context = format_long_term_memory(long_term_memories)
+
+    memory_context = f"{short_term_context}{long_term_context}"
+
+    user_context = format_user_context(get_user_info(user_name))
+
+    # Summarize memory context if it's too long
+    memory_context = summarize_memory_context(memory_context, user_name)
+
+    print("Memory context sent to LLM:", memory_context)
+    return memory_context, user_context
+
+
+def gen_context(context, user_name):
+    """Endpoint dedicated to summarizing memory context."""
+    
+    logger.info(f"Summarization request from {user_name}: {len(context)} chars")
+    
+    summarization_prompt = (
+        f"Please create a SINGLE paragraph that encapsulates the following conversation context, "
+        f"highlighting the user's key preferences, previous questions, and important details in this single paragraph. "
+        f"Keep it concise and under 500 characters.\n\n"
+        f"Context:\n{context}"
+    )
+    
+    with model_lock:
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a helpful summarization assistant. Provide concise, clear summaries."
+            },
+            {
+                "role": "user",
+                "content": summarization_prompt
+            }
+        ]
+        
+        logger.info(f"Summarizing context for {user_name}")
+        answer = llm.create_chat_completion(messages=messages)
+    
+    summary = answer["choices"][0]["message"]["content"]
+    logger.info(f"Summarization complete: {len(context)} chars -> {len(summary)} chars")
+    
+    return summary
+
+
+
+
+### The route that can be called by the other software ###
+
 
 @app.route("/summarize", methods=['POST'])
 def summarize_context():
@@ -353,13 +483,30 @@ def summarize_context():
     
     return summary
 
+
+
+
+
+
 @app.route("/ask", methods=['POST'])
 def answer_ask():
     user_input = request.form.get('user_input')
     user_name = request.form.get('user_name', 'User')
-    memory_context = request.form.get('memory_context', '')
-    user_context = request.form.get('user_context', '')
-    
+    user_id = request.form.get("user_id")
+
+
+    update_user_info_from_message(
+        user_id,
+        user_name,
+        user_input
+    )
+    # Log message utilisateur
+    log_user_message(
+        user_id,
+        user_input
+    )
+
+    memory_context, user_context = create_context(user_name=user_name, message_text=user_input)
     logger.info(f"Request from {user_name}: {user_input}")
     
     with model_lock:
@@ -498,7 +645,11 @@ def answer_ask():
         answer = llm.create_chat_completion(messages=messages)
     
     response_text = answer["choices"][0]["message"]["content"]
-    
+    # Log réponse du bot
+    log_bot_message(
+        user_id,
+        response_text
+    )
     # Format response
     if intent_val:
         return f"✅ You want to {detected_intent_pretty}. {response_text}"
