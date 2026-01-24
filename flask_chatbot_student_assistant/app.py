@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 import faiss
 import pickle
 import numpy as np
+from group_creator import create_group
 load_dotenv()
 
 # Configure logging to both console and file
@@ -200,11 +201,7 @@ def create_group_formation_request(user_input: str, user_name: str) -> dict:
     """Create a request for students to form groups."""
     # TODO: Implement group formation logic (database, notifications, etc.)
     logger.info(f"[ACTION] Creating group formation request by {user_name}: {user_input[:100]}")
-    return {
-        "success": True,
-        "action": "groups_created",
-        "message": "Group formation request created and sent to students."
-    }
+    return create_group(user_input)
 
 
 def search_rag(query: str, top_k: int = 2) -> list:
