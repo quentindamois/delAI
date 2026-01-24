@@ -1,11 +1,14 @@
 import requests
-import streamlist as st
+import streamlit as st
 
 import os
 import sys
 import logging
 
 import httpx
+from dotenv import load_dotenv
+load_dotenv()
+
 
 from conversation_logger import (
     init_csv,
@@ -53,19 +56,18 @@ def summarize_memory_context(context: str, user_name: str) -> str:
     )
     
     try:
-        with httpx.AsyncClient(timeout=300) as client:
-            response = client.post(
+        response = requests.post(
                 SUMMARIZATION_ENDPOINT,
                 data={
                     "context": context,
                     "user_name": user_name,
                 },
             )
-            response.raise_for_status()
-            summary = response.text
-            logger.info("Context summarized: %d chars -> %d chars", len(context), len(summary))
-            return summary
-    except httpx.HTTPError as exc:
+        response.raise_for_status()
+        summary = response.text
+        logger.info("Context summarized: %d chars -> %d chars", len(context), len(summary))
+        return summary
+    except Exception as exc:
         logger.warning(
             "Failed to summarize context (%s), using original",
             exc.__class__.__name__
@@ -95,7 +97,7 @@ def format_short_term_memory(interactions: list[tuple[str, str]]) -> str:
 
 
 
-async def fetch_llm_response(message_text: str, user_name: str) -> str:
+def fetch_llm_response(message_text: str, user_name: str) -> str:
     short_term_interactions = get_last_interactions(user_name)
     short_term_context = format_short_term_memory(short_term_interactions)
 
@@ -107,14 +109,14 @@ async def fetch_llm_response(message_text: str, user_name: str) -> str:
     user_context = format_user_context(get_user_info(user_name))
 
     # Summarize memory context if it's too long
-    memory_context = await summarize_memory_context(memory_context, user_name)
+    memory_context = summarize_memory_context(memory_context, user_name)
 
     print("Memory context sent to LLM:", memory_context)
     
     # Increased timeout to 300 seconds for LLM responses (especially for RAG queries)
-    async with httpx.AsyncClient(timeout=300) as client:
-        response = await client.post(
+    response = requests.post(
             LLM_ENDPOINT,
+            timeout=300,
             data={
                 "user_input": message_text,
                 "user_name": user_name,
@@ -122,34 +124,35 @@ async def fetch_llm_response(message_text: str, user_name: str) -> str:
                 "user_context": user_context,
             },
         )
-        response.raise_for_status()
-        return response.text
+    st.write(response)
+    return response.text
 
 def gen_answer(text):
     user_id = str(999999999)
     display_name = "testUser"
 
     # Try to extract and store user info from the message
+    """
     update_user_info_from_message(
         user_id,
         display_name,
         text
     )
-
+    """
     logger.info(f"Message from {display_name}: {text}")
-
+    """
     # Log message utilisateur
     log_user_message(
         user_id,
         text
-    )
+    )"""
     response_text = fetch_llm_response(text, user_id)
-    
+    """
     # Log réponse du bot
     log_bot_message(
         user_id,
         response_text
-    )
+    )"""
     return response_text
 
 
@@ -159,9 +162,21 @@ st.title("test interface")
 
 historic_actual_message = list()
 
+prompt = st.chat_input("Enter what you want.")
+if prompt:
+    historic_actual_message.append(prompt)
+    tem = gen_answer(prompt)
+    st.write(tem)
+    st.write(type(tem))
+    st.write(help(tem))
+    historic_actual_message.append(tem)
 
-with st.chat_interface("test_user"):
-    prompt = st.chat_input("Enter what you want.")
-    if prompt:
-        with st.status("Running"):
-            historic_actual_message.append(gen_answer(prompt))
+
+
+
+ai_message = st.chat_message("ai")
+user_message = st.chat_message("user")
+tuple_message = (user_message, ai_message)
+
+for i in range(len(historic_actual_message)):
+    tuple_message[i % 2].write(historic_actual_message[i])
