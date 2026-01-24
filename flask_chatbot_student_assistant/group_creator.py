@@ -16,7 +16,7 @@ path_to_credential = os.environ["PATH_CREDENTIAL"]
 gc = gspread.service_account(filename=path_to_credential)
 
 
-def create_group_spreadsheet(url_name, size_class, group_size, name_project="groupe projet"):
+def create_group_spreadsheet(url_name, size_class, group_size, name_project="group projet"):
     ### We first need to extract the link from the message ###
     try:
         ### We get the number of team to be filled ###
@@ -59,22 +59,25 @@ def generate_csv(nb_team, size_team):
 
 
 
-def create_group_formation_request(text):
+def create_group(text):
     regex_nb = r"(?P<number_of_team>\d*)?\s*([Gg]+[rR]+[Oo]+[uU]+[pP]+[eE]?|[Tt]+[eE]+[aA]+[mM]+)[sS]?\s*[Oo]?[fF]?\s*(?P<size_of_team>\d*)"
     list_tag = ["number_of_team", "size_of_team"]
-    regex_link = r".*(?P<ggl_sheet_link>https:\/\/docs\.google\.com\/spreadsheets\/d\/\w+\/?).*"
+    regex_link = r".*(?P<ggl_sheet_link>https:\/\/docs\.google\.com\/spreadsheets\/d\/[\w-]+\/?).*"
     reg_out = re.search(regex_nb, text)
     reg_out_link = re.search(regex_link, text)
 
-    if reg_out and reg_out.group("number_of_team") != "" and reg_out.group("size_of_team") != "" and reg_out_link.group("ggl_sheet_link"):
-        tem = create_group_spreadsheet(int(reg_out.group("number_of_team")), int(reg_out.group("size_of_team")))
-        res = {"success":"[SUCCESS]" in tem, "action":"google_sheet_filled" if "[SUCCESS]" in tem else "google_sheet_failed", "message":tem}
+    if reg_out and reg_out.group("number_of_team") != "" and reg_out.group("size_of_team") != "" and reg_out_link:
+        name_project_reg = r"(?:[tT]+[hH]+[eE]+\s+(?:(?:[Pp]+[Rr]+[oO]+[jJ]+[Ee]+[cC]+[Tt]+|[Pp]+[Rr]+[eE]+[sS]+[Ee]+[Nn]+[Tt]+[Aa]+[Tt]+[Ii]+[Oo]+[Nn]+)[sS]?)\s*(?:[iI]+[Nn]+|[oO]+[fF]+)\s*(?P<type_project>\b\S+\b)|(?P=type_project)\s+(?:(?:[Pp]+[Rr]+[oO]+[jJ]+[Ee]+[cC]+[Tt]+|[Pp]+[Rr]+[eE]+[sS]+[Ee]+[Nn]+[Tt]+[Aa]+[Tt]+[Ii]+[Oo]+[Nn]+)[sS]?))"
+        identified_project = re.search(name_project_reg, text)
+        name_project = "group project" if not(identified_project) else identified_project.group("type_project")
+        tem = create_group_spreadsheet(reg_out_link.group("ggl_sheet_link"), int(reg_out.group("number_of_team")), int(reg_out.group("size_of_team")), name_project)
+        res = {"success":"[SUCCESS]" in tem, "action":"group_created" if "[SUCCESS]" in tem else "group_failed", "message":tem}
     elif not(reg_out):
-        res = "Error: the number of group and the size of group have not been given." + "" if reg_out_link else " No link to a google sheet was provided."
+        res = {"success":False, "action":"group_failed", "message":"Error: the number of group and the size of group have not been given." + "" if reg_out_link else " No link to a google sheet was provided."}
     elif reg_out:
         list_tag_no_int = list(map(lambda b: re.sub("_", " ", b), filter(lambda a: reg_out.group(a) == "", list_tag)))
-        res = f"Error: the following information{ 's are' if len(list_tag_no_int) > 1 else ' is'} missing : {','.join(list_tag_no_int)}."+ "" if reg_out_link else " No link to a google sheet was provided."
+        res = {"success":False, "action":"group_failed", "message":f"Error: the following information{ 's are' if len(list_tag_no_int) > 1 else ' is'} missing : {','.join(list_tag_no_int)}."+ "" if reg_out_link else " No link to a google sheet was provided."}
     elif not(reg_out_link):
-        res = f"Error: no link to a google sheet was provided."
+        res = {"success":False, "action":"group_failed", "message":f"Error: no link to a google sheet was provided."}
     return res
     
