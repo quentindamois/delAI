@@ -451,6 +451,9 @@ def answer_ask():
             )
 
         if action_taken and action_result is not None:
+            if action_result['action'][:5] == "group":
+                return " ".join(action_result["message"].split(" ")[1:])
+
             system_content.append(
                 f"\nAction taken: {action_result['action']}. "
                 f"Result message: {action_result['message']}. "
@@ -496,6 +499,7 @@ def answer_ask():
 
         logger.info(messages)
         answer = llm.create_chat_completion(messages=messages)
+
     
     response_text = answer["choices"][0]["message"]["content"]
     
