@@ -183,7 +183,7 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
     }
 keyword_dictionnary = {
     "send_email":{"verb":["send", "sent", "write"], "noun":["teacher", "question", "help"]},
-    "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team",]},
+    "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team", "teams", "groups"]},
     "get_information":{
         "verb":["look for", "find", "search"],
         "noun":[
@@ -429,6 +429,9 @@ def answer_ask():
             )
 
         if action_taken and action_result is not None:
+            if action_result['action'][:5] == "group":
+                return " ".join(action_result["message"].split(" ")[1:])
+
             system_content.append(
                 f"\nAction taken: {action_result['action']}. "
                 f"Result message: {action_result['message']}. "
