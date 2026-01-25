@@ -210,10 +210,8 @@ def update_user(user_id, text, df):
     """Update the information of a user based on the information inside of the user message"""
     ### We get the list of column to update and the new value ###
     list_update = get_list_update(text)
-    print(f"list_update: {list_update}")
     ### We perform the update the column ###
     for tuple_name_value in list_update:
-        print(f"tuple_name_value: {tuple_name_value}")
         df = update_user_once(user_id, df, tuple_name_value[0], tuple_name_value[1])
     return df
 
@@ -222,7 +220,6 @@ def update_user(user_id, text, df):
 def update_csv_activity(text:str, user_id:str):
     """We update the csv containing the activity of each user"""
     df = pd.read_csv(CSV_ACTIVITY)
-    print(f"user_id: {user_id}")
     user_id = str(user_id)
     ### If the id is not in the csv we create a new row ###
     if not(user_id in list(map(lambda a: str(a), df["StudentID"].to_list()))):
