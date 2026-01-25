@@ -16,6 +16,7 @@ import faiss
 import pickle
 import numpy as np
 from group_creator import create_group
+from recommend_activity import update_csv_activity, recommand_activity
 load_dotenv()
 
 # Configure logging to both console and file
@@ -281,6 +282,10 @@ keyword_dictionnary = {
             "assignment", "brief", "instructions", "manual"
         ]
     },
+    "get_recommandation":{
+        "verb":["give", "recommend", "advise"],
+        "noun":["activity", "occupation"]
+    }
 }
 
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"
@@ -361,7 +366,7 @@ def answer_ask():
     user_context = request.form.get('user_context', '')
     
     logger.info(f"Request from {user_name}: {user_input}")
-    
+    update_csv_activity(user_input, user_name)
     with model_lock:
         global pending_intent
 
@@ -386,6 +391,9 @@ def answer_ask():
                 elif pending_intent["intent"] == "get_information":
                     action_result = retrieve_information_request(pending_intent["text"], pending_intent["user_name"])
                     action_taken = True
+                elif pending_intent["intent"] == "get_recommandation":
+                    action_result = recommand_activity(pending_intent["user_name"])
+                    action_taken = True
                 # Clear pending intent after handling
                 pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None}
             elif normalized_input in confirm_no:
@@ -407,6 +415,9 @@ def answer_ask():
             intent_val = True
         elif detected_intent == "get_information":
             detected_intent_pretty = "retrieve information"
+            intent_val = True
+        elif detected_intent == "get_recommandation":
+            detected_intent_pretty = "ask for a recommandation"
             intent_val = True
 
         # Store pending intent for next user confirmation, including the original text
