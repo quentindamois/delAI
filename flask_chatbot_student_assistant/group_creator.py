@@ -23,11 +23,6 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 logger.setLevel(logging.DEBUG)
 
-
-#load_dotenv()
-# used to get the id to get link to spreadsheet : https://stackoverflow.com/questions/53021610/python-gspread-how-to-get-a-spreadsheet-url-path-in-after-i-create-it
-#path_to_credential = os.environ["PATH_CREDENTIAL"]
-
 path_to_credential = "./delai-484723-9b0f884a2fcb.json"
 
 print(f"[INIT] Attempting to load Google Sheets credentials from: {path_to_credential}")

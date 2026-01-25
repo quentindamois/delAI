@@ -112,7 +112,7 @@ def format_events(events: List[Dict], date: datetime) -> str:
         return f"No events scheduled for {date.strftime('%A, %B %d, %Y')}."
     
     date_str = date.strftime('%A, %B %d, %Y')
-    result = [f"📅 Schedule for {date_str}:\n"]
+    result = [f"Schedule for {date_str}:\n"]
     
     for i, event in enumerate(events, 1):
         # Format time
@@ -132,7 +132,7 @@ def format_events(events: List[Dict], date: datetime) -> str:
         result.append(event_line)
         
         if event['description']:
-            result.append(f"   📝 {event['description']}")
+            result.append(f"   {event['description']}")
     
     return "\n".join(result)
 
