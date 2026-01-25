@@ -6,7 +6,8 @@ CSV_ACTIVITY = "./activity_user.csv"
 
 def update_csv_activity(text:str, user_id:str):
     df = pd.read_csv(CSV_ACTIVITY)
-    if not(user_id in df["StudentID"]):
+    user_id = str(user_id)
+    if not(user_id in list(map(lambda a: str(a), df["StudentID"].to_list()))):
         df = add_user(user_id, df)
     df = update_user(user_id, text, df)
     df.to_csv(CSV_ACTIVITY, index=False)
@@ -40,25 +41,25 @@ dict_extract_binary_value = {
         "target_term":["panrental sup", "parental help", "help from my parent", "parent's help"]
     },
     "Extracurricular":{
-        "verb":["have", "do", "doing", "enrolled", "registerd"],
+        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't"],
         "target_term":["extracurricular", "activities", "activities out of school"]
     },
     "Sports":{
-        "verb":["have", "do", "doing", "enrolled", "registerd"],
+        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't"],
         "target_term":["sport", "physical activities", "physic"]
     },
     "Music":{
-        "verb":["have", "do", "doing", "enrolled", "registerd"],
+        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't"],
         "target_term":["music", "music instrument", "musical instrument", "instrument"]
     },
     "Volunteering":{
-        "verb":["have", "do", "doing", "enrolled", "registerd"],
+        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't"],
         "target_term":["voluteering", "voluteer", "charity", "charity work"]
@@ -92,7 +93,9 @@ def regex_list_word(list_word):
 
 
 def gen_dict_regex_activity(dict_list):
-    return (rf"(?:(?:{regex_list_word(dict_list["verb"])})\s*(?:{regex_list_word(dict_list["negation"])}\s+)|(?:{regex_list_word(dict_list["negative_verb"])}\s+))(?:{regex_list_word(dict_list["inner"])}\s+)?(?P<Activies>{regex_list_word(dict_list["target_term"])})", rf"(?:{regex_list_word(dict_list["verb"])})\s+(?:{regex_list_word(dict_list["inner"])}\s+)?(?P<Activies>{regex_list_word(dict_list["target_term"])})")
+    return ([rf"(?:{regex_list_word(dict_list["negative_verb"])})\s+(?:{regex_list_word(dict_list["inner"])})?\s*(?P<Activies>{regex_list_word(dict_list["target_term"])})",
+             rf"(?:{regex_list_word(dict_list["verb"])})\s*(?:{regex_list_word(dict_list["negation"])})\s+(?:{regex_list_word(dict_list["inner"])})?\s*(?P<Activies>{regex_list_word(dict_list["target_term"])})"], 
+            [rf"(?:{regex_list_word(dict_list["verb"])})\s+(?:{regex_list_word(dict_list["inner"])})?\s*(?P<Activies>{regex_list_word(dict_list["target_term"])})"])
 
 
 regex_activites = gen_dict_regex_activity(dict_new_activity)
@@ -100,8 +103,8 @@ regex_activites = gen_dict_regex_activity(dict_new_activity)
 def gen_list_regex_binary_extract(dict_extract):
     res_dict = dict()
     for key_bin_col in dict_extract.keys():
-        regex_pos = rf"(?:{regex_list_word(dict_extract[key_bin_col]["verb"])})\s*(?:{regex_list_word(dict_extract[key_bin_col]["inner"])}\s+)?(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})"  
-        regex_negative = rf"(?:{regex_list_word(dict_extract[key_bin_col]["verb"])})\s*(?:{regex_list_word(dict_extract[key_bin_col]["negation"])})\s+(?:{regex_list_word(dict_extract[key_bin_col]["inner"])}\s+)?(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})"
+        regex_pos = rf"(?:{regex_list_word(dict_extract[key_bin_col]["verb"])})\s*(?:{regex_list_word(dict_extract[key_bin_col]["inner"])})?\s*(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})"  
+        regex_negative = rf"(?:{regex_list_word(dict_extract[key_bin_col]["verb"])})\s*(?:{regex_list_word(dict_extract[key_bin_col]["negation"])})\s+(?:{regex_list_word(dict_extract[key_bin_col]["inner"])})?\s*(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})"
         res_dict[key_bin_col] = (regex_negative, regex_pos)
     return res_dict
 
@@ -113,8 +116,6 @@ def get_bin_column(text):
     for key_regex in dict_regex_extract_binary_value.keys():
         tem_regex_negative = re.search(dict_regex_extract_binary_value[key_regex][0], text)
         tem_regex_positive = re.search(dict_regex_extract_binary_value[key_regex][1], text)
-        print(f"tem_regex_negative: {tem_regex_negative} {not(tem_regex_negative is None)}")
-        print(f"tem_regex_positive: {tem_regex_positive} {not(tem_regex_positive is None)}")
         if not(tem_regex_negative is None):
             res_list.append((key_regex, 0))
         elif not(tem_regex_positive is None):
@@ -122,25 +123,32 @@ def get_bin_column(text):
     return res_list
 
 dict_regex_extract_value = {
-    "Absences": (r"[Aa]+[Bb]+[Ss]+[Ee]+[nN]+(?:[cC]+[eE]+[Ss]*|[tT]+)\s+(?:[fF]+[oO]+[rR]+\s+)(?P<Absences>\d+)|(?P=Absences)\s+[Aa]+[Bb]+[Ss]+[Ee]+[nN]+(?:[cC]+[eE]+[Ss]*|[tT]+)", lambda a: int(a)),
-    "Age": (r"(?P<Age>\d+)\s+[Yy][Ee][Aa][Rr][Ss]\s+[Oo][Ll][dD]|(?:[Aa][mM]|'+[mM])\s+(?P=Age)", lambda a: int(a)),
-    "StudyTimeWeekly": (r"(?:[sS][Tt][Uu][Dd])([Yy]+|[Ii][Ee][Dd])\s+(?:[fF]+[oO]+[rR]+|[Dd]+[Uu]+[Rr]+[Ii]+[nN]+[gG]+)?\s+(?:[eE]+[vV]+[eE]+[rR]+\s+[wW]+[eE]+[kK]+\s+)?(?P<StudyTimeWeekly>\d+\.?\d*)", lambda a: float(a)),
-    "GPA":(r"[Gg][Pp][Aa]\s+(?:[Ii][Ss]|[Ee][Qq][Uu][Aa][Ll]\s+[Tt][Oo]|[Oo][Ff])\s+(?P<GPA>\d+\.?\d*)", lambda a: float(a)),
+    "Absences": ([r"[Aa]+[Bb]+[Ss]+[Ee]+[nN]+[Tt]+\s+(?:[fF]+[oO]+[rR]+\s+)?(?P<Absences>\d+)", r"(?P<Absences>\d+)\s*[Aa]+[Bb]+[Ss]+[Ee]+[nN]+[cC]+[eE]+[Ss]*"], lambda a: int(a)),
+    "Age": ([r"(?P<Age>\d+)\s+[Yy]+[Ee]+[Aa]+[Rr]+[Ss]*\s+[Oo]+[Ll]+[dD]+", r"[Aa]*[mM]+\s+(?P<Age>\d+)"], lambda a: int(a)),
+    "StudyTimeWeekly": ([r"(?:[sS][Tt][Uu][Dd])([Yy]+|[Ii][Ee][Dd])\s+(?:[fF]+[oO]+[rR]+|[Dd]+[Uu]+[Rr]+[Ii]+[nN]+[gG]+)?\s+(?:[eE]+[vV]+[eE]+[rR]+\s+[wW]+[eE]+[kK]+\s+)?(?P<StudyTimeWeekly>\d+\.?\d*)"], lambda a: float(a)),
+    "GPA":([r"[Gg]+[Pp]+[Aa]+\s+(?:[Ii]+[Ss]+|[Ee]+[Qq]+[Uu]+[Aa]+[Ll]+\s+[Tt]+[Oo]+|[Oo]+[Ff]+)\s+(?P<GPA>\d+\.?\d*)"], lambda a: float(a)),
 }
 
 def get_value_column(text):
     res_list = list()
     for key_regex in dict_regex_extract_value.keys():
-        tem_search = re.search(dict_regex_extract_value[key_regex][0], text)
-        if not(tem_search is None):
-            res_list.append((key_regex, dict_regex_extract_value[key_regex][1](tem_search.group(key_regex))))
+        for extract_regex in dict_regex_extract_value[key_regex][0]:
+            tem_search = re.search(extract_regex, text)
+            if not(tem_search is None):
+                res_list.append((key_regex, dict_regex_extract_value[key_regex][1](tem_search.group(key_regex))))
     print(f"get_value_column: {res_list}")
     return res_list
 
 def get_values_activies(text):
-    list_new_acitivity = re.findall(regex_activites[1], text)
-    list_acitivity_to_be_removed = re.findall(regex_activites[0], text)
+    list_new_acitivity = list()
+    list_acitivity_to_be_removed = list()
+    for sub_regex in regex_activites[1]:
+        list_new_acitivity = list_new_acitivity + re.findall(sub_regex, text)
+    for sub_regex in regex_activites[0]:
+        print(f"list_acitivity_to_be_removed: {list_acitivity_to_be_removed}")
+        list_acitivity_to_be_removed =  list_acitivity_to_be_removed + re.findall(sub_regex, text)
     list_new_acitivity = list(filter(lambda a: not(a in list_acitivity_to_be_removed), list_new_acitivity))
+    print([("Activity", (list_acitivity_to_be_removed, list_new_acitivity))])
     return [("Activity", (list_acitivity_to_be_removed, list_new_acitivity))]
 
 def get_list_update(text):
@@ -150,12 +158,17 @@ def get_list_update(text):
 
 def update_user_once(user_id, df, name_col, new_value):
     if name_col == "Activity":
-        print(f'name_col: {name_col}')
-        print(f"df[name_col]: {df[name_col]}")
         up_date_col = lambda a: "|".join(list(set(list(filter(lambda a: not(a in new_value[0]), a.split("|"))) + new_value[1])))
     else:
         up_date_col = lambda a: new_value
-    df.loc[df["StudentID"] == user_id, name_col] = df.loc[df["StudentID"] == user_id, name_col].apply(up_date_col)
+    print("old value")
+    print(df.loc[df["StudentID"].apply(str) == user_id, name_col])
+    df.loc[df["StudentID"].apply(str) == user_id, name_col] = df.loc[df["StudentID"].apply(str) == user_id, name_col].apply(up_date_col)
+    print("new value")
+    print(df.loc[df["StudentID"].apply(str) == user_id, name_col])
+    print("expcted result")
+    print(df.loc[df["StudentID"].apply(str) == user_id, name_col].apply(up_date_col))
+    df = df
     return df
 
 def update_user(user_id, text, df):
@@ -169,13 +182,14 @@ def update_user(user_id, text, df):
 
 
 def recommand_activity(studentID, top=3):
+    studentID = str(studentID)
     try:
         ### Load the csv ###
         df = pd.read_csv(CSV_ACTIVITY)
         ### seperate the user from the rest of user ###
-        df_input = df.loc[df["StudentID"] != studentID, df.columns != "StudentID"]
+        df_input = df.loc[df["StudentID"].apply(str) != studentID, df.columns != "StudentID"]
         array_input = df_input.to_numpy()
-        row_student = df.loc[df["StudentID"] == studentID, df.columns  != "StudentID"].to_numpy()
+        row_student = df.loc[df["StudentID"].apply(str) == studentID, df.columns  != "StudentID"].to_numpy()
         user_already_hobby = row_student[0,-1]
         ### compute the sumilarity between the user and the rest ###
         list_similary_activity = list(zip(cosine_similarity(array_input[:,:-1], row_student[:,:-1]), array_input[:,-1]))
@@ -189,19 +203,19 @@ def recommand_activity(studentID, top=3):
         if len(recommanded_new_activity) > 0:
             res = {
                 "success":True,
-                "action":"recommandation_success",
-                "message": f"[SUCCESS] Here {'are' if len(recommanded_new_activity) > 1 else 'is'} recommended {'' if len(recommanded_new_activity) > 1 else 'a '}activite{'s' if len(recommanded_new_activity) > 1 else ''} : {' ,'.join(recommanded_new_activity)}."
+                "action":"recommendation_success",
+                "message": f"[SUCESS] Here {'are' if len(recommanded_new_activity) > 1 else 'is'} recommended {'' if len(recommanded_new_activity) > 1 else 'a '}activite{'s' if len(recommanded_new_activity) > 1 else ''} : {' ,'.join(recommanded_new_activity)}."
             }
         else:
             res = {
                 "success":False,
-                "action":"recommandation_failed",
-                "message": f"[ERROR] No activties found."
+                "action":"recommendation_failed",
+                "message": f"[ERROR] I did not find any recommendation for you."
             }
     except Exception as e:
         res = {
             "success":False,
-            "action":"recommandation_failed",
-            "message": f"[ERROR] Encoutered the following error when doing the recommandation : {e}."
+            "action":"recommendation_failed",
+            "message": f"[ERROR] Encoutered the following error when doing the recommendation : {e}."
         }
     return res
