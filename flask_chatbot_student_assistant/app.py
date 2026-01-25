@@ -296,7 +296,7 @@ def answer_ask():
         log_warning(user_id, user_name, user_input, category, logger)
         return f"Your message was flagged as inappropriate ({category}). Please keep the conversation respectful and safe."
     
-    update_csv_activity(user_input, user_name)
+    update_csv_activity(user_input, user_id)
     with model_lock:
         global pending_intent
 

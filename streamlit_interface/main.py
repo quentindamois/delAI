@@ -137,6 +137,7 @@ def fetch_llm_response(message_text: str, user_id: str, display_name: str) -> st
                 "user_name": display_name,
                 "memory_context": memory_context,
                 "user_context": user_context,
+                "user_id":user_id
             },
         )
     st.write(response)

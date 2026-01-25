@@ -26,37 +26,43 @@ logger.setLevel(logging.DEBUG)
 
 dict_extract_binary_value = {
     "Tutoring":{
-        "verb":["received", "have", "'m", "am", "helped"],
-        "inner":["been", "being", "from", "by"],
+        "verb":["recieved", "have", "'m", "am", "helped", "and", "started"],
+        "inner":["been", "being", "from", "by", "having"],
+        "negative_verb":["stopped", "stop"],
         "negation":["never", "not", "n't", "hate"],
         "target_term":["tutor"]
     },
     "ParentalSupport":{
-        "verb":["received", "have", "'m", "am", "helped"],
-        "inner":["been", "being", "from", "by"],
+        "verb":["recieved", "have", "'m", "am", "helped", "and", "started"],
+        "negative_verb":["stopped", "stop"],
+        "inner":["been", "being", "from", "by", "having"],
         "negation":["never", "not", "n't", "hate"],
-        "target_term":["parental sup", "parental help", "help from my parent", "parent's help"]
+        "target_term":["panrental sup", "parental help", "help from my parent", "parent's help"]
     },
     "Extracurricular":{
-        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and", "started"],
+        "negative_verb":["quit", "quitting", "stopped", "stop"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't", "hate"],
         "target_term":["extracurricular", "activities", "activities out of school"]
     },
     "Sports":{
-        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and", "started"],
+        "negative_verb":["quit", "quitting", "stopped", "stop"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't", "hate"],
         "target_term":["sport", "physical activities", "physic"]
     },
     "Music":{
-        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and", "started"],
+        "negative_verb":["quit", "quitting", "stopped", "stop"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't", "hate"],
         "target_term":["music", "music instrument", "musical instrument", "instrument"]
     },
     "Volunteering":{
-        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and", "started"],
+        "negative_verb":["quit", "quitting", "stopped", "stop"],
         "inner":["at", "in"],
         "negation":["never", "not", "n't", "hate"],
         "target_term":["volunteering", "volunteer", "charity", "charity work"]
@@ -115,7 +121,9 @@ def gen_list_regex_binary_extract(dict_extract):
     res_dict = dict()
     for key_bin_col in dict_extract.keys():
         regex_pos = rf"(?:{regex_list_word(dict_extract[key_bin_col]["verb"])})\s*(?:{regex_list_word(dict_extract[key_bin_col]["inner"])})?\s*(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})"  
-        regex_negative = rf"(?:{regex_list_word(dict_extract[key_bin_col]["verb"])})\s*(?:{regex_list_word(dict_extract[key_bin_col]["negation"])})\s+(?:{regex_list_word(dict_extract[key_bin_col]["inner"])})?\s*(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})"
+        regex_negative = [rf"(?:{regex_list_word(dict_extract[key_bin_col]["verb"])})\s*(?:{regex_list_word(dict_extract[key_bin_col]["negation"])})\s+(?:{regex_list_word(dict_extract[key_bin_col]["inner"])})?\s*(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})",
+                          rf"(?:{regex_list_word(dict_extract[key_bin_col]["negative_verb"])})\s+(?:{regex_list_word(dict_extract[key_bin_col]["inner"])})?\s*(?:[aA]+\s+)?(?:{regex_list_word(dict_extract[key_bin_col]["target_term"])})"
+                          ]
         res_dict[key_bin_col] = (regex_negative, regex_pos)
     return res_dict
 
@@ -142,7 +150,11 @@ def get_bin_column(text):
     """Extract the value for the column that contain either a 1 or a 0"""
     res_list = list()
     for key_regex in dict_regex_extract_binary_value.keys():
-        tem_regex_negative = re.search(dict_regex_extract_binary_value[key_regex][0], text)
+        tem_regex_negative = None
+        i = 0
+        while (i < len(dict_regex_extract_binary_value[key_regex][0])) and (tem_regex_negative is None):
+            tem_regex_negative = re.search(dict_regex_extract_binary_value[key_regex][0][i], text)
+            i += 1
         tem_regex_positive = re.search(dict_regex_extract_binary_value[key_regex][1], text)
         if not(tem_regex_negative is None):
             ### We change the value to 0 if the information about that column is negative ###
