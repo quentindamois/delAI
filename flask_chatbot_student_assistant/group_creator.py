@@ -67,6 +67,7 @@ def save_group_link(group_link: str) -> bool:
         return False
 
 def create_group_spreadsheet(url_name, nb_team, group_size, name_project="group projet"):
+    """We put the a row for each group and a column for each group member"""
     ### We first need to extract the link from the message ###
     try:
         ### We get the number of team to be filled ###
@@ -115,27 +116,23 @@ def create_group_spreadsheet(url_name, nb_team, group_size, name_project="group 
     return res
 
 
-def generate_csv(nb_team, size_team):
-    tem_dict = dict(name_team=list(map(lambda a: f"team {a}", range(1, nb_team + 1))))
-    for i in range(1, size_team + 1):
-        tem_dict[f"group member {i}"] = [""] * nb_team
-    res_df = pd.DataFrame(tem_dict)
-    return res_df
-
-
 def vary_instruction():
+    """select a random version of the instruction to have more variety"""
     list_instruction = ["I am sorry, i did not understand, could explain it in the format : 'number_of_group' groups of 'number_of_person' in each group.", "I only understand the format X group of Y with X being the number of group and Y the number of person"]
     return random.choice(list_instruction)
 
 
 def create_group(text):
     """Parse user input to extract group info and create spreadsheet."""
+    ### This regex is used to get the number of team and their size ###
     regex_nb = r"(?P<number_of_team>\d+)?\s*([Gg]+[rR]+[Oo]+[uU]+[pP]+[eE]?|[Tt]+[eE]+[aA]+[mM]+)[sS]?\s*[Oo]?[fF]?\s*(?P<size_of_team>\d+)?"
     list_tag = ["number_of_team", "size_of_team"]
+    ### This regex is used to extract the link to the google sheet ###
     regex_link = r".*(?P<ggl_sheet_link>https:\/\/docs\.google\.com\/spreadsheets\/d\/[\w-]+\/?).*"
     reg_out = re.search(regex_nb, text)
     reg_out_link = re.search(regex_link, text)
     if reg_out and not(reg_out.group("number_of_team") is None) and not(reg_out.group("size_of_team") is None) and reg_out_link:
+        ### If we have the number of teams, the number of person per team and the link we will try to see if the project or the presentation has a name
         name_project_reg = r"(?:[tT]+[hH]+[eE]+\s+(?:(?:[Pp]+[Rr]+[oO]+[jJ]+[Ee]+[cC]+[Tt]+|[Pp]+[Rr]+[eE]+[sS]+[Ee]+[Nn]+[Tt]+[Aa]+[Tt]+[Ii]+[Oo]+[Nn]+)[sS]?)\s*(?:[iI]+[Nn]+|[oO]+[fF]+)\s*(?P<type_project>\b\S+\b)?|(?P=type_project)?\s+(?:(?:[Pp]+[Rr]+[oO]+[jJ]+[Ee]+[cC]+[Tt]+|[Pp]+[Rr]+[eE]+[sS]+[Ee]+[Nn]+[Tt]+[Aa]+[Tt]+[Ii]+[Oo]+[Nn]+)[sS]?))"
         identified_project = re.search(name_project_reg, text)
         # Ensure name_project is never None or empty
