@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 MODEL_PATH = BASE_DIR / "flask_chatbot_student_assistant" / "models" / "nomic-embed-text-v1.5.Q4_K_M.gguf"
 CSV_FILE = "conversation_log.csv"
 
-MAX_HISTORY = int(os.getenv("LONG_TERM_HISTORY", 50))
+MAX_HISTORY = int(os.getenv("LONG_TERM_HISTORY", 30))
 TOP_K = int(os.getenv("LONG_TERM_TOP_K", 2))
 
 

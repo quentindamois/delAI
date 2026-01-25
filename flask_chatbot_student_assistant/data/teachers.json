@@ -1,19 +1,19 @@
 [
   {
     "name": "Prof. Noâm Dumbledore",
-    "aliases": ["Noâm Dumbledore", "Dr. Dumbledore", "Professor Dumbledore"],
+    "aliases": ["Dumbledore", "Dr. Dumbledore", "Professor Dumbledore"],
     "course": "Machine Learning Principles",
     "email": "noam.detournay@efrei.net"
   },
   {
     "name": "Prof. Quentin Severus",
-    "aliases": ["Quentin Severus", "Dr. Severus", "Professor Severus"],
+    "aliases": ["Severus", "Dr. Severus", "Professor Severus"],
     "course": "Cybersecurity Fundamentals",
     "email": "quentin.damois@efrei.net"
   },
   {
     "name": "Prof. Thaïs Macgonagall",
-    "aliases": ["Thaïs Macgonagall", "Dr. Macgonagall", "Professor Macgonagall"],
+    "aliases": ["Macgonagall", "Dr. Macgonagall", "Professor Macgonagall"],
     "course": "Natural Language Processing",
     "email": "thais.bordessoul@efrei.net"
   }

@@ -40,6 +40,14 @@ SUMMARIZATION_ENDPOINT = os.getenv("SUMMARIZATION_ENDPOINT", "http://127.0.0.1:5
 
 MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "400"))
 
+def is_confirmation_only(text: str) -> bool:
+    """Check if the user input is just a yes/no confirmation."""
+    import re
+    confirm_yes = {"yes", "y", "yeah", "yep", "ok", "okay", "sure", "confirm"}
+    confirm_no = {"no", "n", "nope", "cancel", "stop"}
+    normalized = re.sub(r"[^a-zA-Z0-9]+", " ", text).strip().lower()
+    return normalized in (confirm_yes | confirm_no)
+
 app = App(plugins=[DevToolsPlugin()])
 
 discord_intents = discord.Intents.default()
@@ -83,18 +91,24 @@ async def summarize_memory_context(context: str, display_name: str) -> str:
 
 
 async def fetch_llm_response(message_text: str, user_id: str, display_name: str) -> str:
-    short_term_interactions = get_last_interactions(user_id)
-    short_term_context = format_short_term_memory(short_term_interactions)
+    # Skip memory processing for simple confirmations
+    if is_confirmation_only(message_text):
+        logger.info(f"Skipping memory summarization for confirmation: {message_text}")
+        memory_context = ""
+        user_context = ""
+    else:
+        short_term_interactions = get_last_interactions(user_id)
+        short_term_context = format_short_term_memory(short_term_interactions)
 
-    long_term_memories = retrieve_relevant_memories(user_id, message_text)
-    long_term_context = format_long_term_memory(long_term_memories)
+        long_term_memories = retrieve_relevant_memories(user_id, message_text)
+        long_term_context = format_long_term_memory(long_term_memories)
 
-    memory_context = f"{short_term_context}{long_term_context}"
+        memory_context = f"{short_term_context}{long_term_context}"
 
-    user_context = format_user_context(get_user_info(user_id))
+        user_context = format_user_context(get_user_info(user_id))
 
-    # Summarize memory context if it's too long
-    memory_context = await summarize_memory_context(memory_context, display_name)
+        # Summarize memory context if it's too long
+        memory_context = await summarize_memory_context(memory_context, display_name)
 
     print("Memory context sent to LLM:", memory_context)
     

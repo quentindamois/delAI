@@ -81,11 +81,43 @@ def resolve_teacher_from_text(text: str, teacher_lookup: dict, allow_fuzzy: bool
     return None, matches
 
 
+def get_latest_group_link() -> str | None:
+    """Retrieve the most recently saved group spreadsheet link from data/group_links."""
+    try:
+        filename = "./data/group_links/group_links.json"
+        if not os.path.exists(filename):
+            return None
+        
+        with open(filename, "r", encoding="utf-8") as f:
+            links_data = json.load(f)
+        
+        if not links_data:
+            return None
+        
+        # Return the last link (most recent)
+        return links_data[-1]["link"]
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to retrieve latest group link: {e}")
+        return None
+
+
 def generate_email_draft(llm, model_lock, user_input: str, user_name: str, teacher: dict | None = None, logger: logging.Logger | None = None, draft_lock_timeout: int = 20) -> str:
     logger = logger or logging.getLogger(__name__)
     logger.info(f"Generating email draft for {user_name}: {user_input[:100]}")
     teacher_name = (teacher or {}).get("name", "your teacher")
     teacher_course = (teacher or {}).get("course")
+    
+    # Check if the user_input mentions group/groups, and if so, get the latest group link
+    group_link = None
+    if re.search(r'\bgroups?\b', user_input, re.IGNORECASE):
+        group_link = get_latest_group_link()
+        if group_link:
+            logger.info(f"Found latest group link for email draft: {group_link}")
+    
+    group_link_instruction = ""
+    if group_link:
+        group_link_instruction = f"\n- Include this link to the group spreadsheet in your email: {group_link}"
+    
     prompt = (
         "Write a short, respectful email from the student to their teacher.\n"
         "- The teacher is: " + teacher_name + ".\n"
@@ -93,6 +125,8 @@ def generate_email_draft(llm, model_lock, user_input: str, user_name: str, teach
         + "- Use the student's display name: " + user_name + " in the sign-off.\n"
         "- Keep it clear and factual.\n"
         "- Base it strictly on this request: " + user_input + "\n"
+        + group_link_instruction
+        + "\n"
         "- Include a greeting and a courteous closing.\n"
         "- Do NOT add extra details or any preamble like 'Here is the email'.\n"
         "Return only the email body."
@@ -178,9 +212,7 @@ This email was sent automatically by the Quorum student assistant bot.
     <p>Hello {teacher_name},</p>
     <p>You have received a message from student <strong>{user_name}</strong>.</p>
     {f'<p><em>Course: {teacher_course}</em></p>' if teacher_course else ''}
-    <blockquote style="margin: 20px; padding: 10px; background-color: #f5f5f5; border-left: 4px solid #4CAF50;">
-      {user_input}
-    </blockquote>
+    {user_input}
     <hr>
     <p style="color: #666; font-size: 12px;">This email was sent automatically by the Quorum student assistant bot.</p>
   </body>
