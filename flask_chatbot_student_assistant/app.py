@@ -428,9 +428,11 @@ def answer_ask():
                 f"I couldn't send the email due to error: {action_result.get('message', 'unknown error')}"
             )
 
+        if action_taken and action_result is not None and action_result.get('action') in ['group_created', 'group_failed']:
+            short_circuit_response = " ".join(action_result["message"].split(" ")[1:])
+            short_circuit_response += " \nLet me know if you need me to send it to your teacher !"
+
         if action_taken and action_result is not None:
-            if action_result['action'][:5] == "group":
-                return " ".join(action_result["message"].split(" ")[1:])
 
             system_content.append(
                 f"\nAction taken: {action_result['action']}. "
