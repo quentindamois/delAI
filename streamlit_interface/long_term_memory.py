@@ -7,11 +7,13 @@ import numpy as np
 from pathlib import Path
 from llama_cpp import Llama
 
-MODEL_PATH = "./models/nomic-embed-text-v1.5.Q4_K_M.gguf"
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+MODEL_PATH = BASE_DIR / "flask_chatbot_student_assistant" / "models" / "nomic-embed-text-v1.5.Q4_K_M.gguf"
 CSV_FILE = "conversation_log.csv"
 
-MAX_HISTORY = int(os.getenv("LONG_TERM_HISTORY", 50))
+MAX_HISTORY = int(os.getenv("LONG_TERM_HISTORY", 10))
 TOP_K = int(os.getenv("LONG_TERM_TOP_K", 2))
+MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", 30))
 
 
 # Load embedding model once
@@ -43,8 +45,8 @@ def get_last_interaction_pairs(username: str, limit: int = MAX_HISTORY) -> List[
 
             elif row["role"] == "bot" and current_user_message:
                 interactions.append({
-                    "user_message": current_user_message,
-                    "agent_response": row["message"],
+                    "user_message": current_user_message[:MAX_MESSAGE_LENGTH],
+                    "agent_response": row["message"][:MAX_MESSAGE_LENGTH],
                 })
                 current_user_message = None
 
@@ -90,14 +92,12 @@ def format_long_term_memory(memories: List[Dict]) -> str:
     blocks = []
     for mem in memories:
         blocks.append(
-            f"User message: {mem['user_message']}\n"
-            f"Agent response: {mem['agent_response']}"
+            f"• {mem['user_message'][:MAX_MESSAGE_LENGTH]} → {mem['agent_response'][:MAX_MESSAGE_LENGTH]}"
         )
 
-    joined = "\n\n".join(blocks)
+    joined = "\n".join(blocks)
 
     return (
-        "Here are past interactions with the user that may be relevant.\n"
-        "Use them only if they help you answer the current message.\n\n"
+        "Recent interactions:\n"
         f"{joined}\n\n"
     )

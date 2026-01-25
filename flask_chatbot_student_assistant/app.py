@@ -184,8 +184,9 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
         "message": f"Found {len(formatted_results)} relevant documents.",
         "results": formatted_results
     }
+
 keyword_dictionnary = {
-    "send_email":{"verb":["send", "sent", "write"], "noun":["teacher", "question", "help"]},
+    "send_email":{"verb":["write", "send"], "noun":["teacher", "question", "help"]},
     "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team", "teams", "groups"]},
     "get_information":{
         "verb":["look for", "find", "search"],
@@ -248,18 +249,22 @@ def summarize_context():
     
     logger.info(f"Summarization request from {user_name}: {len(context)} chars")
     
+    # Truncate context to prevent exceeding token limit during summarization
+    # Rough estimate: 1 char ≈ 0.25-0.5 tokens, so limit to 300 chars to be safe
+    max_context_chars = 300
+    if len(context) > max_context_chars:
+        context = context[:max_context_chars] + "..."
+        logger.info(f"Context truncated to {len(context)} chars for summarization")
+    
     summarization_prompt = (
-        f"Please create a SINGLE paragraph that encapsulates the following conversation context, "
-        f"highlighting the user's key preferences, previous questions, and important details in this single paragraph. "
-        f"Keep it concise and under 500 characters.\n\n"
-        f"Context:\n{context}"
+        f"Summarize in 1-2 sentences:\n\n{context}"
     )
     
     with model_lock:
         messages = [
             {
                 "role": "system",
-                "content": "You are a helpful summarization assistant. Provide concise, clear summaries."
+                "content": "You are a concise summarization assistant."
             },
             {
                 "role": "user",
@@ -298,6 +303,7 @@ def answer_ask():
         action_taken = False
         action_result = None
         short_circuit_response = None
+        previous_user_input_for_action = None
 
         confirm_yes = {"yes", "y", "yeah", "yep", "ok", "okay", "sure", "confirm"}
         confirm_no = {"no", "n", "nope", "cancel", "stop"}
@@ -330,9 +336,11 @@ def answer_ask():
                     action_taken = True
                 elif pending_intent["intent"] == "get_information":
                     action_result = retrieve_information_request(pending_intent["text"], pending_intent["user_name"])
+                    previous_user_input_for_action = pending_intent.get("text", user_input)
                     action_taken = True
                 elif pending_intent["intent"] == "planning_information":
                     action_result = get_planning(pending_intent["text"])
+                    previous_user_input_for_action = pending_intent.get("text", user_input)
                     action_taken = True
                 elif pending_intent["intent"] == "get_recommendation":
                     action_result = recommand_activity(pending_intent["user_name"])
@@ -364,7 +372,7 @@ def answer_ask():
             detected_intent_pretty = "check your schedule"
             intent_val = True
         elif detected_intent == "get_recommendation":
-            detected_intent_pretty = "ask for a recommandation"
+            detected_intent_pretty = "ask for an activity recommendation"
             intent_val = True
 
         # Prepare pending intent payload for the next user confirmation
@@ -446,9 +454,9 @@ def answer_ask():
 
         if intent_val:
             developer_content.append(
-                    f"\nDETECTED INTENT: {detected_intent_pretty}\n"
-                    "When an intent is detected, do not answer the content of the user's message. "
-                    "Ask ONLY: 'Do you want to proceed with this action?' "
+                    f"\nTHE USER ASKED TO: {detected_intent_pretty}\n"
+                    "Do not answer the content of the user's message. "
+                    "Always ask ONLY: 'Do you want to proceed with this action?' "
                     "Do NOT state that any action was executed. Do NOT assume the user confirmed. Do NOT add other text."
                 )
 
@@ -465,6 +473,9 @@ def answer_ask():
 
         if action_taken and action_result is not None and action_result.get('action') in ["recommendation_failed", "recommendation_success"]:
             short_circuit_response = " ".join(action_result["message"].split(" ")[1:])
+
+        if action_taken and action_result is not None and action_result.get('action') in ["planning_retrieved", "planning_failed", "planning_empty"]:
+            short_circuit_response = action_result["results"] if action_result.get('results') else action_result["message"]
             
         if action_taken and action_result is not None:
             system_content.append(
@@ -472,25 +483,29 @@ def answer_ask():
                 f"Result message: {action_result['message']}. "
                 f"Success: {action_result['success']}. "
             )
-            # If it's a RAG retrieval, add the results context
-            if action_result.get('action') == 'information_retrieved' and action_result.get('results'):
-                rag_context = "Here are the relevant documents from the knowledge base:\n\n"
-                for i, result in enumerate(action_result['results'], 1):
-                    rag_context += f"Document {i} (Source: {result['source']}):\n{result['text']}\n\n"
-                system_content.append(rag_context)
-            # For email actions, add from/to info
-            if action_result.get('action') in ['email_sent', 'email_failed']:
-                system_content.append(
-                    f"From: {action_result.get('from', 'N/A')}. "
-                    f"To: {action_result.get('to', 'N/A')}. "
-                )
-            
             messages = [
                 {
                 "role": "system",
                 "content": "\n".join(system_content)
                 }
             ]
+            # If it's a RAG retrieval, add the results context
+            if action_result.get('action') == 'information_retrieved' and action_result.get('results'):
+                rag_context = "Here are the relevant documents from the knowledge base:\n\n"
+                for i, result in enumerate(action_result['results'], 1):
+                    rag_context += f"Document {i} (Source: {result['source']}):\n{result['text']}\n\n"
+                developer_content.append(rag_context)
+
+            if developer_content != []:
+                messages.append({
+                    "role": "developer",
+                    "content": "\n".join(developer_content)
+                })
+            if previous_user_input_for_action:
+                messages.append({
+                    "role": "user",
+                    "content": previous_user_input_for_action
+                })
         else:
             messages = [
                 {
@@ -540,10 +555,16 @@ def answer_ask():
             pending_intent["text"] = None
     
     # Format response
+    # Add cleanup marker if an action was completed after confirmation
+    final_response = response_text
+    if action_taken:
+        final_response = "[CLEANUP_CONFIRMATION_LOGS]" + response_text
+        logger.info("Action completed after confirmation - adding cleanup marker")
+    
     if intent_val:
-        return response_text
+        return final_response
     else:
-        return response_text
+        return final_response
 
 
 if __name__ == '__main__':

@@ -13,7 +13,8 @@ from conversation_logger import (
     init_csv,
     log_user_message,
     log_bot_message,
-    get_last_interactions
+    get_last_interactions,
+    remove_last_n_entries
 )
 from user_context import (
     init_user_file,
@@ -138,9 +139,24 @@ async def handle_message(ctx: ActivityContext[MessageActivity]):
         user_id = getattr(sender, "id", sender.name)
         display_name = sender.name or user_id
 
+        # Log user message
+        log_user_message(user_id, ctx.activity.text)
+
         response_text = await fetch_llm_response(
             ctx.activity.text, user_id, display_name
         )
+        
+        # Check if this is a confirmed action completion
+        if response_text.startswith("[CLEANUP_CONFIRMATION_LOGS]"):
+            # Remove the marker
+            response_text = response_text.replace("[CLEANUP_CONFIRMATION_LOGS]", "")
+            # Clean up the confirmation exchange from logs
+            remove_last_n_entries(user_id, 2)
+            logger.info(f"Cleaned up confirmation logs for user {user_id}")
+        
+        # Log bot response
+        log_bot_message(user_id, response_text)
+        
     except httpx.HTTPError as exc:
         await ctx.send(
             f"I cannot connect to the flask app. ({exc.__class__.__name__}: {exc})"
@@ -191,6 +207,14 @@ async def on_message(message: discord.Message):
             return
 
     # Log réponse du bot
+    # Check if this is a confirmed action completion
+    if response_text.startswith("[CLEANUP_CONFIRMATION_LOGS]"):
+        # Remove the marker
+        response_text = response_text.replace("[CLEANUP_CONFIRMATION_LOGS]", "")
+        # Clean up the confirmation exchange from logs
+        remove_last_n_entries(user_id, 2)
+        logger.info(f"Cleaned up confirmation logs for user {user_id}")
+    
     log_bot_message(
         user_id,
         response_text

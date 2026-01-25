@@ -14,7 +14,8 @@ from conversation_logger import (
     init_csv,
     log_user_message,
     log_bot_message,
-    get_last_interactions
+    get_last_interactions,
+    remove_last_n_entries
 )
 from user_context import (
     init_user_file,
@@ -161,12 +162,21 @@ def gen_answer(text):
         text
     )"""
     response_text = fetch_llm_response(text, user_id, display_name)
+
+    # Check if this is a confirmed action completion
+    if response_text.startswith("[CLEANUP_CONFIRMATION_LOGS]"):
+        # Remove the marker
+        response_text = response_text.replace("[CLEANUP_CONFIRMATION_LOGS]", "")
+        # Clean up the confirmation exchange from logs
+        remove_last_n_entries(user_id, 2)
+        logger.info(f"Cleaned up confirmation logs for user {user_id}")
     """
     # Log réponse du bot
     log_bot_message(
         user_id,
         response_text
-    )"""
+    )
+    """
     return response_text
 
 

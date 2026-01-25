@@ -42,6 +42,39 @@ def log_bot_message(username: str, message: str):
             )
 
 
+def remove_last_n_entries(username: str, n: int = 2):
+    """
+    Removes the last n entries (messages) for a specific user from the conversation log.
+    Used to clean up confirmation exchanges before logging the final result.
+    """
+    if not os.path.exists(CSV_FILE):
+        return
+    
+    with _lock:
+        # Read all rows
+        with open(CSV_FILE, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            all_rows = list(reader)
+        
+        # Find indices of last n entries for this user
+        user_indices = [i for i, row in enumerate(all_rows) if row["username"] == username]
+        
+        if len(user_indices) < n:
+            return  # Not enough entries to remove
+        
+        # Get the indices to remove (last n entries for this user)
+        indices_to_remove = set(user_indices[-n:])
+        
+        # Keep all rows except the ones to remove
+        filtered_rows = [row for i, row in enumerate(all_rows) if i not in indices_to_remove]
+        
+        # Write back to file
+        with open(CSV_FILE, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["role", "username", "message", "timestamp"])
+            writer.writeheader()
+            writer.writerows(filtered_rows)
+
+
 def get_last_interactions(username: str, n: int | None = None) -> list[tuple[str, str]]:
     """
     Returns the last n (user_message, bot_message) pairs for a given user.

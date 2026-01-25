@@ -2,10 +2,19 @@ import re
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+import sys
 from typing import List, Dict, Optional
 from icalendar import Calendar, Event
-
+# Setup logger
 logger = logging.getLogger(__name__)
+# Add console handler to ensure output is visible
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] %(name)s - %(levelname)s: %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+logger.setLevel(logging.DEBUG)
+
 
 
 def parse_date_from_query(query: str) -> Optional[datetime]:
@@ -15,6 +24,7 @@ def parse_date_from_query(query: str) -> Optional[datetime]:
     Returns datetime object or None
     """
     query_lower = query.lower()
+    query_lower = re.sub(r'[?.!,]', '', query_lower)
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     
     # Check for "today" or "aujourd'hui"
@@ -30,6 +40,16 @@ def parse_date_from_query(query: str) -> Optional[datetime]:
     if j_plus_match:
         days = int(j_plus_match.group(1))
         return today + timedelta(days=days)
+    
+    # Check for "in n days" pattern
+    dans_match = re.search(r'in\s+(\d+)\s*(days?|j)\b', query_lower)
+    if dans_match:
+        days = int(dans_match.group(1))
+        return today + timedelta(days=days)
+    
+    # "day after tomorrow" 
+    if re.search(r"\bday after[-\s]?tomorrow\b", query_lower):
+        return today + timedelta(days=2)
     
     # Check for date patterns: DD/MM, DD/MM/YYYY, YYYY-MM-DD
     date_patterns = [
@@ -52,6 +72,7 @@ def parse_date_from_query(query: str) -> Optional[datetime]:
                 continue
     
     # Default to today if no date found
+    logger.info("No date found in query, defaulting to today")
     return today
 
 
@@ -146,6 +167,7 @@ def get_planning(user_query: str) -> dict:
     
     # Parse date from query
     target_date = parse_date_from_query(user_query)
+    logger.info(f"Parsed target date: {target_date}")
     if not target_date:
         return {
             "success": False,
@@ -167,11 +189,23 @@ def get_planning(user_query: str) -> dict:
     
     # Format the result
     formatted_schedule = format_events(events, target_date)
+
+    if events == []:
+        logger.info(f"No events found for {target_date.date()}")
+        return {
+            "success": True,
+            "action": "planning_empty",
+            "message": f"No events scheduled for {target_date.strftime('%A, %B %d, %Y')}.",
+            "results": None,
+            "events_count": 0,
+            "date": target_date.isoformat()
+        }
     
     return {
         "success": True,
         "action": "planning_retrieved",
-        "message": formatted_schedule,
+        "message": "Schedule information found in the calendar.",
+        "results": formatted_schedule,
         "events_count": len(events),
         "date": target_date.isoformat()
     }

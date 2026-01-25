@@ -1,8 +1,19 @@
+from fastapi import logger
+import logging
 import pandas as pd
 import re
 from sklearn.metrics.pairwise import cosine_similarity
+import sys
 CSV_ACTIVITY = "./activity_user.csv"
 
+logger = logging.getLogger(__name__)
+# Add console handler to ensure output is visible
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('[%(asctime)s] %(name)s - %(levelname)s: %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+logger.setLevel(logging.DEBUG)
 
 def update_csv_activity(text:str, user_id:str):
     df = pd.read_csv(CSV_ACTIVITY)
@@ -29,40 +40,40 @@ def add_user(user_id, df):
 
 dict_extract_binary_value = {
     "Tutoring":{
-        "verb":["recieved", "have", "'m", "am", "helped"],
+        "verb":["received", "have", "'m", "am", "helped"],
         "inner":["been", "being", "from", "by"],
-        "negation":["never", "not", "n't"],
+        "negation":["never", "not", "n't", "hate"],
         "target_term":["tutor"]
     },
     "ParentalSupport":{
-        "verb":["recieved", "have", "'m", "am", "helped"],
+        "verb":["received", "have", "'m", "am", "helped"],
         "inner":["been", "being", "from", "by"],
-        "negation":["never", "not", "n't"],
-        "target_term":["panrental sup", "parental help", "help from my parent", "parent's help"]
+        "negation":["never", "not", "n't", "hate"],
+        "target_term":["parental sup", "parental help", "help from my parent", "parent's help"]
     },
     "Extracurricular":{
-        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
         "inner":["at", "in"],
-        "negation":["never", "not", "n't"],
+        "negation":["never", "not", "n't", "hate"],
         "target_term":["extracurricular", "activities", "activities out of school"]
     },
     "Sports":{
-        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
         "inner":["at", "in"],
-        "negation":["never", "not", "n't"],
+        "negation":["never", "not", "n't", "hate"],
         "target_term":["sport", "physical activities", "physic"]
     },
     "Music":{
-        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
         "inner":["at", "in"],
-        "negation":["never", "not", "n't"],
+        "negation":["never", "not", "n't", "hate"],
         "target_term":["music", "music instrument", "musical instrument", "instrument"]
     },
     "Volunteering":{
-        "verb":["have", "do", "doing", "enrolled", "registerd", "and"],
+        "verb":["have", "do", "doing", "enrolled", "registered", "and"],
         "inner":["at", "in"],
-        "negation":["never", "not", "n't"],
-        "target_term":["voluteering", "voluteer", "charity", "charity work"]
+        "negation":["never", "not", "n't", "hate"],
+        "target_term":["volunteering", "volunteer", "charity", "charity work"]
     }
 }
 
@@ -74,7 +85,7 @@ def flatten_unique(list_list):
     return res
 
 dict_new_activity = {
-    "verb":["have", "do", "doing", "enrolled", "registerd"],
+    "verb":["have", "do", "doing", "enrolled", "registered"],
     "negative_verb":["quit", "quitting", "stopped", "stop"],
     "inner":["at", "in", "at a", "in a", "doing"],
     "negation":["never", "not", "n't"],
@@ -136,20 +147,20 @@ def get_value_column(text):
             tem_search = re.search(extract_regex, text)
             if not(tem_search is None):
                 res_list.append((key_regex, dict_regex_extract_value[key_regex][1](tem_search.group(key_regex))))
-    print(f"get_value_column: {res_list}")
+    logger.info(f"get_value_column: {res_list}")
     return res_list
 
 def get_values_activies(text):
-    list_new_acitivity = list()
-    list_acitivity_to_be_removed = list()
+    list_new_activity = list()
+    list_activity_to_be_removed = list()
     for sub_regex in regex_activites[1]:
-        list_new_acitivity = list_new_acitivity + re.findall(sub_regex, text)
+        list_new_activity = list_new_activity + re.findall(sub_regex, text)
     for sub_regex in regex_activites[0]:
-        print(f"list_acitivity_to_be_removed: {list_acitivity_to_be_removed}")
-        list_acitivity_to_be_removed =  list_acitivity_to_be_removed + re.findall(sub_regex, text)
-    list_new_acitivity = list(filter(lambda a: not(a in list_acitivity_to_be_removed), list_new_acitivity))
-    print([("Activity", (list_acitivity_to_be_removed, list_new_acitivity))])
-    return [("Activity", (list_acitivity_to_be_removed, list_new_acitivity))]
+        logger.info(f"list_activity_to_be_removed: {list_activity_to_be_removed}")
+        list_activity_to_be_removed =  list_activity_to_be_removed + re.findall(sub_regex, text)
+    list_new_activity = list(filter(lambda a: not(a in list_activity_to_be_removed), list_new_activity))
+    logger.info([("Activity", (list_activity_to_be_removed, list_new_activity))])
+    return [("Activity", (list_activity_to_be_removed, list_new_activity))]
 
 def get_list_update(text):
     return get_bin_column(text) + get_value_column(text) + get_values_activies(text)
@@ -161,13 +172,13 @@ def update_user_once(user_id, df, name_col, new_value):
         up_date_col = lambda a: "|".join(list(set(list(filter(lambda a: not(a in new_value[0]), a.split("|"))) + new_value[1])))
     else:
         up_date_col = lambda a: new_value
-    print("old value")
-    print(df.loc[df["StudentID"].apply(str) == user_id, name_col])
+    logger.info("old value")
+    logger.info(df.loc[df["StudentID"].apply(str) == user_id, name_col])
     df.loc[df["StudentID"].apply(str) == user_id, name_col] = df.loc[df["StudentID"].apply(str) == user_id, name_col].apply(up_date_col)
-    print("new value")
-    print(df.loc[df["StudentID"].apply(str) == user_id, name_col])
-    print("expcted result")
-    print(df.loc[df["StudentID"].apply(str) == user_id, name_col].apply(up_date_col))
+    logger.info("new value")
+    logger.info(df.loc[df["StudentID"].apply(str) == user_id, name_col])
+    logger.info("expcted result")
+    logger.info(df.loc[df["StudentID"].apply(str) == user_id, name_col].apply(up_date_col))
     df = df
     return df
 
@@ -175,7 +186,7 @@ def update_user(user_id, text, df):
     #df = pd.read_csv(CSV_ACTIVITY)
     list_update = get_list_update(text)
     for tuple_name_value in list_update:
-        print(f"tuple_name_value: {tuple_name_value}")
+        logger.info(f"tuple_name_value: {tuple_name_value}")
         df = update_user_once(user_id, df, tuple_name_value[0], tuple_name_value[1])
     #df.to_csv(CSV_ACTIVITY, index=False)
     return df
@@ -204,7 +215,7 @@ def recommand_activity(studentID, top=3):
             res = {
                 "success":True,
                 "action":"recommendation_success",
-                "message": f"[SUCESS] Here {'are' if len(recommanded_new_activity) > 1 else 'is'} recommended {'' if len(recommanded_new_activity) > 1 else 'a '}activite{'s' if len(recommanded_new_activity) > 1 else ''} : {' ,'.join(recommanded_new_activity)}."
+                "message": f"[SUCESS] Here {'are' if len(recommanded_new_activity) > 1 else 'is'} recommended {'' if len(recommanded_new_activity) > 1 else 'a '} activit{'ies' if len(recommanded_new_activity) > 1 else 'y'} : {', '.join(recommanded_new_activity)}."
             }
         else:
             res = {
