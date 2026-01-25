@@ -18,6 +18,7 @@ from email_sender import (
     generate_email_draft,
     send_email_to_teacher,
 )
+from content_moderation import detect_harmful_content, log_warning
 load_dotenv()
 
 # Configure logging to both console and file
@@ -270,8 +271,15 @@ def answer_ask():
     user_name = request.form.get('user_name', 'User')
     memory_context = request.form.get('memory_context', '')
     user_context = request.form.get('user_context', '')
+    user_id = request.form.get('user_id', 'unknown')
     
     logger.info(f"Request from {user_name}: {user_input}")
+    
+    # Check for harmful content at the start
+    is_harmful, category = detect_harmful_content(user_input)
+    if is_harmful:
+        log_warning(user_id, user_name, user_input, category, logger)
+        return f"Your message was flagged as inappropriate ({category}). Please keep the conversation respectful and safe."
     
     with model_lock:
         global pending_intent

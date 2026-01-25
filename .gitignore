@@ -187,3 +187,9 @@ delAIvenv/
 students-assistant/conversation_log.csv
 
 delai-*.json
+
+/flask_chatbot_student_assistant/data/
+/flask_chatbot_student_assistant/data
+*.json
+flask_chatbot_student_assistant/data/group_links/group_links.json
+flask_chatbot_student_assistant/data/teachers.json
