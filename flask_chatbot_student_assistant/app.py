@@ -462,9 +462,9 @@ def answer_ask():
             )
 
         if action_taken and action_result is not None:
-            if action_result['action'][:5] == "group":
+            if action_result['action'][:5] == "group" or action_result["action"][:14] == "recommandation":
                 return " ".join(action_result["message"].split(" ")[1:])
-
+            
             system_content.append(
                 f"\nAction taken: {action_result['action']}. "
                 f"Result message: {action_result['message']}. "
