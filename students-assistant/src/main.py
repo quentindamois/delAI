@@ -47,7 +47,7 @@ discord_intents.message_content = True
 discord_client = discord.Client(intents=discord_intents)
 
 
-async def summarize_memory_context(context: str, user_name: str) -> str:
+async def summarize_memory_context(context: str, display_name: str) -> str:
     """
     Use the generative model to summarize memory context if it exceeds MAX_CONTEXT_LENGTH.
     Returns the original context if it's short enough, or a summary otherwise.
@@ -58,7 +58,7 @@ async def summarize_memory_context(context: str, user_name: str) -> str:
     logger.info(
         "Context too long (%d chars), generating summary for user %s",
         len(context),
-        user_name
+        display_name
     )
     
     try:
@@ -67,7 +67,7 @@ async def summarize_memory_context(context: str, user_name: str) -> str:
                 SUMMARIZATION_ENDPOINT,
                 data={
                     "context": context,
-                    "user_name": user_name,
+                    "user_name": display_name,
                 },
             )
             response.raise_for_status()
@@ -82,19 +82,19 @@ async def summarize_memory_context(context: str, user_name: str) -> str:
         return context
 
 
-async def fetch_llm_response(message_text: str, user_name: str) -> str:
-    short_term_interactions = get_last_interactions(user_name)
+async def fetch_llm_response(message_text: str, user_id: str, display_name: str) -> str:
+    short_term_interactions = get_last_interactions(user_id)
     short_term_context = format_short_term_memory(short_term_interactions)
 
-    long_term_memories = retrieve_relevant_memories(user_name, message_text)
+    long_term_memories = retrieve_relevant_memories(user_id, message_text)
     long_term_context = format_long_term_memory(long_term_memories)
 
     memory_context = f"{short_term_context}{long_term_context}"
 
-    user_context = format_user_context(get_user_info(user_name))
+    user_context = format_user_context(get_user_info(user_id))
 
     # Summarize memory context if it's too long
-    memory_context = await summarize_memory_context(memory_context, user_name)
+    memory_context = await summarize_memory_context(memory_context, display_name)
 
     print("Memory context sent to LLM:", memory_context)
     
@@ -104,7 +104,7 @@ async def fetch_llm_response(message_text: str, user_name: str) -> str:
             LLM_ENDPOINT,
             data={
                 "user_input": message_text,
-                "user_name": user_name,
+                "user_name": display_name,
                 "memory_context": memory_context,
                 "user_context": user_context,
             },
@@ -120,8 +120,12 @@ async def handle_message(ctx: ActivityContext[MessageActivity]):
     await ctx.reply(TypingActivityInput())
 
     try:
+        sender = ctx.activity.from_
+        user_id = getattr(sender, "id", sender.name)
+        display_name = sender.name or user_id
+
         response_text = await fetch_llm_response(
-            ctx.activity.text, ctx.activity.from_.name
+            ctx.activity.text, user_id, display_name
         )
     except httpx.HTTPError as exc:
         await ctx.send(
@@ -164,7 +168,7 @@ async def on_message(message: discord.Message):
     async with message.channel.typing():
         try:
             response_text = await fetch_llm_response(
-                message.content, user_id
+                message.content, user_id, display_name
             )
         except httpx.HTTPError as exc:
             await message.channel.send(
