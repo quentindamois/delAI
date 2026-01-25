@@ -41,7 +41,7 @@ SUMMARIZATION_ENDPOINT = os.getenv("SUMMARIZATION_ENDPOINT", "http://127.0.0.1:5
 
 MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "400"))
 
-def summarize_memory_context(context: str, user_name: str) -> str:
+def summarize_memory_context(context: str, display_name: str) -> str:
     """
     Use the generative model to summarize memory context if it exceeds MAX_CONTEXT_LENGTH.
     Returns the original context if it's short enough, or a summary otherwise.
@@ -52,7 +52,7 @@ def summarize_memory_context(context: str, user_name: str) -> str:
     logger.info(
         "Context too long (%d chars), generating summary for user %s",
         len(context),
-        user_name
+        display_name
     )
     
     try:
@@ -60,7 +60,7 @@ def summarize_memory_context(context: str, user_name: str) -> str:
                 SUMMARIZATION_ENDPOINT,
                 data={
                     "context": context,
-                    "user_name": user_name,
+                    "user_name": display_name,
                 },
             )
         response.raise_for_status()
@@ -97,19 +97,19 @@ def format_short_term_memory(interactions: list[tuple[str, str]]) -> str:
 
 
 
-def fetch_llm_response(message_text: str, user_name: str) -> str:
-    short_term_interactions = get_last_interactions(user_name)
+def fetch_llm_response(message_text: str, user_id: str, display_name: str) -> str:
+    short_term_interactions = get_last_interactions(user_id)
     short_term_context = format_short_term_memory(short_term_interactions)
 
-    long_term_memories = retrieve_relevant_memories(user_name, message_text)
+    long_term_memories = retrieve_relevant_memories(user_id, message_text)
     long_term_context = format_long_term_memory(long_term_memories)
 
     memory_context = f"{short_term_context}{long_term_context}"
 
-    user_context = format_user_context(get_user_info(user_name))
+    user_context = format_user_context(get_user_info(user_id))
 
     # Summarize memory context if it's too long
-    memory_context = summarize_memory_context(memory_context, user_name)
+    memory_context = summarize_memory_context(memory_context, display_name)
 
     print("Memory context sent to LLM:", memory_context)
     
@@ -119,7 +119,7 @@ def fetch_llm_response(message_text: str, user_name: str) -> str:
             timeout=300,
             data={
                 "user_input": message_text,
-                "user_name": user_name,
+                "user_name": display_name,
                 "memory_context": memory_context,
                 "user_context": user_context,
             },
@@ -146,7 +146,7 @@ def gen_answer(text):
         user_id,
         text
     )"""
-    response_text = fetch_llm_response(text, user_id)
+    response_text = fetch_llm_response(text, user_id, display_name)
     """
     # Log réponse du bot
     log_bot_message(

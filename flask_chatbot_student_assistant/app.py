@@ -4,18 +4,20 @@ import re
 import threading
 import logging
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.header import Header
-from email import policy
 from dotenv import load_dotenv
 import faiss
 import pickle
 import numpy as np
 from group_creator import create_group
+from email_sender import (
+    load_teachers,
+    resolve_teacher_from_text,
+    generate_email_draft,
+    send_email_to_teacher,
+)
 load_dotenv()
 
 # Configure logging to both console and file
@@ -91,7 +93,13 @@ except Exception as e:
     rag_database_loaded = False
 
 # Lock pour empêcher les accès concurrents aux modèles
-model_lock = threading.Lock()
+DRAFT_LOCK_TIMEOUT = int(os.getenv("DRAFT_LOCK_TIMEOUT", "20"))
+# Reentrant lock to allow nested acquisitions within a single request
+model_lock = threading.RLock()
+
+# Teacher directory and in-memory cache
+TEACHERS_PATH = os.getenv("TEACHERS_PATH", "./data/teachers.json")
+teachers, teacher_lookup = load_teachers(TEACHERS_PATH, logger)
 
 # Pending intent state to enable confirmation on the next user message
 pending_intent = {
@@ -99,107 +107,12 @@ pending_intent = {
     "pretty": None,
     "text": None,
     "user_name": None,
+    "teacher": None,
 }
-
-
-# Action handlers
-def send_email_to_teacher(user_input: str, user_name: str) -> dict:
-    """Send an email to a teacher with the student's question."""
-    logger.info(f"[ACTION] Sending email to teacher from {user_name}: {user_input[:100]}")
-    
-    # Email configuration (use environment variables in production)
-    smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')  # e.g., smtp.gmail.com, smtp.office365.com
-    smtp_port = int(os.getenv('SMTP_PORT', '587'))  # 587 for TLS, 465 for SSL
-    sender_email = os.getenv('MAIL_FROM', 'your-email@example.com')
-    sender_password = os.getenv('MAIL_PASSWORD', 'your-password')
-    teacher_email = os.getenv('MAIL_TO', 'teacher@example.com')
-
-    # Strip potential BOM or hidden characters from env inputs
-    sender_email = sender_email.encode('utf-8').decode('utf-8-sig')
-    sender_password = sender_password.encode('utf-8').decode('utf-8-sig')
-    teacher_email = teacher_email.encode('utf-8').decode('utf-8-sig')
-    
-    try:
-        # Create message with SMTP policy; subject encoded as RFC2047 for safety
-        message = MIMEMultipart('alternative', policy=policy.SMTP)
-        message['Subject'] = str(Header(f'Question from student: {user_name}', 'utf-8'))
-        message['From'] = sender_email
-        message['To'] = teacher_email
-        
-        # Email body
-        text_content = f"""
-Hello,
-
-You have received a question from student {user_name}:
-
-{user_input}
-
----
-This email was sent automatically by the Quorum student assistant bot.
-        """
-        
-        html_content = f"""
-<html>
-  <body>
-    <p>Hello,</p>
-    <p>You have received a question from student <strong>{user_name}</strong>:</p>
-    <blockquote style="margin: 20px; padding: 10px; background-color: #f5f5f5; border-left: 4px solid #4CAF50;">
-      {user_input}
-    </blockquote>
-    <hr>
-    <p style="color: #666; font-size: 12px;">This email was sent automatically by the Quorum student assistant bot.</p>
-  </body>
-</html>
-        """
-        
-        # Attach both plain text and HTML versions with UTF-8 encoding
-        part1 = MIMEText(text_content, 'plain', _charset='utf-8')
-        part2 = MIMEText(html_content, 'html', _charset='utf-8')
-        message.attach(part1)
-        message.attach(part2)        
-        # Send email
-        # Force ASCII-safe local hostname to avoid non-ASCII encoding in EHLO
-        with smtplib.SMTP(smtp_server, smtp_port, local_hostname="localhost") as server:
-            logger.info("SMTP connecting: starttls -> login -> sendmail")
-            server.starttls()  # Upgrade connection to secure
-
-            # Additional diagnostics for auth encoding
-            try:
-                sender_email.encode('ascii')
-                sender_password.encode('ascii')
-            except Exception as enc_err:
-                logger.error("Auth contains non-ascii chars: %s", enc_err)
-
-            logger.info("SMTP login...")
-            server.login(sender_email, sender_password)
-            logger.info("SMTP login OK, sending mail...")
-            # send as bytes; headers are encoded-word, body utf-8 encoded
-            server.sendmail(sender_email, [teacher_email], message.as_bytes())
-            logger.info("SMTP sendmail done")
-        
-        logger.info(f"[SUCCESS] Email sent to {teacher_email} from {user_name}")
-        return {
-            "success": True,
-            "action": "email_sent",
-            "message": f"[SUCCESS] Email sent to {teacher_email} from {user_name}",
-            "from": sender_email,
-            "to": teacher_email,
-        }
-        
-    except Exception as e:
-        logger.error(f"[ERROR] Failed to send email: {str(e)}")
-        return {
-            "success": False,
-            "action": "email_failed",
-            "message": f"[ERROR] Failed to send email: {str(e)}",
-            "from": sender_email,
-            "to": teacher_email,
-        }
 
 
 def create_group_formation_request(user_input: str, user_name: str) -> dict:
     """Create a request for students to form groups."""
-    # TODO: Implement group formation logic (database, notifications, etc.)
     logger.info(f"[ACTION] Creating group formation request by {user_name}: {user_input[:100]}")
     return create_group(user_input)
 
@@ -268,8 +181,6 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
         "message": f"Found {len(formatted_results)} relevant documents.",
         "results": formatted_results
     }
-
-
 keyword_dictionnary = {
     "send_email":{"verb":["send", "sent", "write"], "noun":["teacher", "question", "help"]},
     "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team", "teams", "groups"]},
@@ -367,10 +278,18 @@ def answer_ask():
 
         action_taken = False
         action_result = None
+        short_circuit_response = None
 
         confirm_yes = {"yes", "y", "yeah", "yep", "ok", "okay", "sure", "confirm"}
         confirm_no = {"no", "n", "nope", "cancel", "stop"}
-        normalized_input = user_input.strip().lower() if user_input else ""
+
+        def normalize_reply(text: str) -> str:
+            # strip punctuation and extra spaces for more permissive matching
+            if not text:
+                return ""
+            return re.sub(r"[^a-zA-Z0-9]+", " ", text).strip().lower()
+
+        normalized_input = normalize_reply(user_input)
 
         # If we had a pending intent from the previous message, act only after explicit confirmation
         if pending_intent["intent"]:
@@ -378,7 +297,14 @@ def answer_ask():
                 logger.info(f"TAKING ACTION AFTER CONFIRMATION: {pending_intent['pretty']}")
                 confirmed_intent_pretty = pending_intent["pretty"]
                 if pending_intent["intent"] == "send_email":
-                    action_result = send_email_to_teacher(pending_intent["text"], pending_intent["user_name"])
+                    if not pending_intent.get("text"):
+                        # Guardrail: never send an empty or missing draft
+                        pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None, "teacher": None}
+                        return "I don't have an email draft to send. Please repeat the question and I'll draft an email for you."
+                    if not pending_intent.get("teacher"):
+                        pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None, "teacher": None}
+                        return "I need the teacher's name before I can send the email. Please try again."
+                    action_result = send_email_to_teacher(pending_intent["text"], pending_intent["user_name"], pending_intent.get("teacher"), logger)
                     action_taken = True
                 elif pending_intent["intent"] == "make_group":
                     action_result = create_group_formation_request(pending_intent["text"], pending_intent["user_name"])
@@ -387,15 +313,16 @@ def answer_ask():
                     action_result = retrieve_information_request(pending_intent["text"], pending_intent["user_name"])
                     action_taken = True
                 # Clear pending intent after handling
-                pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None}
+                pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None, "teacher": None}
             elif normalized_input in confirm_no:
                 logger.info("Confirmation denied. Clearing pending intent.")
-                pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None}
+                pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None, "teacher": None}
 
         # Detect user intent in the current message to set up confirmation for the next turn
         detected_intent = get_intent(user_input.lower())
         intent_val = False
         detected_intent_pretty = None
+        pending_candidate = None
         
         # Execute actions based on detected intent
         # Only trigger send_email if both verb AND noun are present
@@ -409,14 +336,58 @@ def answer_ask():
             detected_intent_pretty = "retrieve information"
             intent_val = True
 
-        # Store pending intent for next user confirmation, including the original text
+        # Prepare pending intent payload for the next user confirmation
         if intent_val:
-            pending_intent = {
+            pending_candidate = {
                 "intent": detected_intent,
                 "pretty": detected_intent_pretty,
                 "text": user_input,
                 "user_name": user_name,
+                "teacher": None,
             }
+            # For send_email, generate the draft immediately and bypass the general LLM reply
+            if detected_intent == "send_email" and not action_taken:
+                teacher_match, teacher_matches = resolve_teacher_from_text(user_input, teacher_lookup)
+                if not teacher_matches:
+                    short_circuit_response = (
+                        "Please mention the teacher's name so I can send it to the right person."
+                    )
+                    pending_candidate = None
+                    intent_val = False
+                elif len(teacher_matches) > 1:
+                    names = ", ".join([t.get("name", "(unknown)") for t in teacher_matches if t])
+                    short_circuit_response = (
+                        f"I found multiple teachers matching that request: {names}. Which one should I email?"
+                    )
+                    pending_candidate = None
+                    intent_val = False
+                else:
+                    teacher = teacher_match
+                    pending_candidate["teacher"] = teacher
+                    teacher_label = teacher.get("name", "your teacher")
+                    try:
+                        draft = generate_email_draft(llm, model_lock, user_input, user_name, teacher, logger, DRAFT_LOCK_TIMEOUT)
+                        pending_candidate["text"] = draft
+                        short_circuit_response = (
+                            "Here is your draft email:\n\n"
+                            f"{draft}\n\n"
+                            f"Send this to {teacher_label}?"
+                        )
+                    except TimeoutError:
+                        logger.error("Draft generation timed out; not storing pending intent")
+                        short_circuit_response = (
+                            "Sorry, I'm busy right now and couldn't create the email draft. "
+                            "Please try again in a moment."
+                        )
+                        pending_candidate = None
+                        intent_val = False
+                    except Exception as e:
+                        logger.error(f"Draft generation failed: {e}")
+                        short_circuit_response = (
+                            "Sorry, I couldn't create the email draft. Please try again."
+                        )
+                        pending_candidate = None
+                        intent_val = False
         
         system_content = [
                     "You are Quorum, a helpful bot assistant for students and teachers. ",
@@ -426,7 +397,7 @@ def answer_ask():
                     "Only provide personal details if explicitly listed in the provided user information. ",
                     "You must never invent, assume, or fabricate schedules, plans, events, classes, or activities. ",
                     "If this information is not explicitly provided, you must say you do not have it. ",
-                    "You must not add examples, guesses, or placeholders. ",
+                    "Never add examples, guesses, or placeholders. ",
                     "Do not answer with partially related or generic user details. ",
                     "Be friendly and professional. ",
                     "Keep your answers brief."
@@ -444,10 +415,17 @@ def answer_ask():
 
         if intent_val:
             developer_content.append(
-                f"\nDETECTED INTENT: {detected_intent_pretty}\n"
-                "When an intent is detected, do not answer the content of the user's message. "
-                "Ask only for a confirmation with a concise yes/no question about performing that intent. "
-                "Do not provide any other reply until the user answers yes or no."
+                    f"\nDETECTED INTENT: {detected_intent_pretty}\n"
+                    "When an intent is detected, do not answer the content of the user's message. "
+                    "Ask ONLY: 'Do you want to proceed with this action?' "
+                    "Do NOT state that any action was executed. Do NOT assume the user confirmed. Do NOT add other text."
+                )
+
+        # If an email action was just handled, return a fixed response without LLM
+        if action_taken and action_result is not None and action_result.get('action') in ['email_sent', 'email_failed']:
+            short_circuit_response = (
+                f"I successfully sent the email to {action_result.get('to', 'unknown recipient')}" if action_result.get('success') else
+                f"I couldn't send the email due to error: {action_result.get('message', 'unknown error')}"
             )
 
         if action_taken and action_result is not None:
@@ -459,14 +437,12 @@ def answer_ask():
                 f"Result message: {action_result['message']}. "
                 f"Success: {action_result['success']}. "
             )
-            
             # If it's a RAG retrieval, add the results context
             if action_result.get('action') == 'information_retrieved' and action_result.get('results'):
                 rag_context = "Here are the relevant documents from the knowledge base:\n\n"
                 for i, result in enumerate(action_result['results'], 1):
                     rag_context += f"Document {i} (Source: {result['source']}):\n{result['text']}\n\n"
                 system_content.append(rag_context)
-            
             # For email actions, add from/to info
             if action_result.get('action') in ['email_sent', 'email_failed']:
                 system_content.append(
@@ -497,15 +473,40 @@ def answer_ask():
             })
         
 
-        logger.info(messages)
-        answer = llm.create_chat_completion(messages=messages)
+        if short_circuit_response is None:
+            logger.info(messages)
+            answer = llm.create_chat_completion(messages=messages)
+            response_text = answer["choices"][0]["message"]["content"]
+            logger.info(f"LLM response generated for {user_name}: {response_text}")
+        else:
+            response_text = short_circuit_response
 
-    
-    response_text = answer["choices"][0]["message"]["content"]
+    # Extract drafted email for send_email intent so we can send the refined content on confirmation
+    email_draft = None
+    if intent_val and detected_intent == "send_email":
+        # In the short-circuit flow, the draft is generated directly and stored
+        if pending_candidate and pending_candidate.get("text"):
+            email_draft = pending_candidate["text"]
+        else:
+            logger.info("No generated draft present; prompting user to retry")
+            return (
+                "I could not capture the email draft. "
+                "Please ask again and I will provide the draft for your confirmation."
+            )
+
+    # Persist pending intent with the drafted email (when applicable) for the next confirmation step
+    if intent_val and not action_taken and pending_candidate:
+        pending_intent = pending_candidate
+        if detected_intent == "send_email" and email_draft:
+            pending_intent["text"] = email_draft
+            logger.info("Stored drafted email for confirmation and sending")
+        elif detected_intent == "send_email":
+            # No draft parsed; block sending until a proper draft is produced
+            pending_intent["text"] = None
     
     # Format response
     if intent_val:
-        return f"✅ You want to {detected_intent_pretty}. {response_text}"
+        return response_text
     else:
         return response_text
 
