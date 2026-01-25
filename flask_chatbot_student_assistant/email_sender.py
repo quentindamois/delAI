@@ -200,7 +200,7 @@ Hello {teacher_name},
 You have received a message from student {user_name}.
 {f'Course: {teacher_course}\n' if teacher_course else ''}
 
-{user_input}
+{'\n'.join(user_input.splitlines())}
 
 ---
 This email was sent automatically by the Quorum student assistant bot.
@@ -212,7 +212,7 @@ This email was sent automatically by the Quorum student assistant bot.
     <p>Hello {teacher_name},</p>
     <p>You have received a message from student <strong>{user_name}</strong>.</p>
     {f'<p><em>Course: {teacher_course}</em></p>' if teacher_course else ''}
-    {user_input}
+    {''.join(f'<p>{line}</p>' for line in user_input.splitlines())}
     <hr>
     <p style="color: #666; font-size: 12px;">This email was sent automatically by the Quorum student assistant bot.</p>
   </body>

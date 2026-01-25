@@ -19,6 +19,7 @@ from email_sender import (
     send_email_to_teacher,
 )
 from content_moderation import detect_harmful_content, log_warning
+from calendar_manager import get_planning
 load_dotenv()
 
 # Configure logging to both console and file
@@ -188,10 +189,14 @@ keyword_dictionnary = {
     "get_information":{
         "verb":["look for", "find", "search"],
         "noun":[
-            "school", "campus", "calendar",
+            "school", "campus", 
             "file", "document", "doc", "docs", "documentation", "pdf", "guide", "policy",
             "assignment", "brief", "instructions", "manual"
         ]
+    },
+    "planning_information":{
+        "verb":["show", "get", "check", "see"],
+        "noun":["schedule", "planning", "calendar", "class", "classes", "course", "courses", "agenda", "timetable"]
     },
 }
 
@@ -320,6 +325,9 @@ def answer_ask():
                 elif pending_intent["intent"] == "get_information":
                     action_result = retrieve_information_request(pending_intent["text"], pending_intent["user_name"])
                     action_taken = True
+                elif pending_intent["intent"] == "planning_information":
+                    action_result = get_planning(pending_intent["text"])
+                    action_taken = True
                 # Clear pending intent after handling
                 pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None, "teacher": None}
             elif normalized_input in confirm_no:
@@ -342,6 +350,9 @@ def answer_ask():
             intent_val = True
         elif detected_intent == "get_information":
             detected_intent_pretty = "retrieve information"
+            intent_val = True
+        elif detected_intent == "planning_information":
+            detected_intent_pretty = "check your schedule"
             intent_val = True
 
         # Prepare pending intent payload for the next user confirmation

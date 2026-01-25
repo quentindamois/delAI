@@ -71,3 +71,5 @@ yarl==1.22.0
 faiss-cpu==1.13.2
 pandas==3.0.0
 gspread==6.2.1
+
+icalendar==6.1.0
