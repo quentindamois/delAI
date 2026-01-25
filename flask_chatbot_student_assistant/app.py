@@ -391,7 +391,7 @@ def answer_ask():
                 elif pending_intent["intent"] == "get_information":
                     action_result = retrieve_information_request(pending_intent["text"], pending_intent["user_name"])
                     action_taken = True
-                elif pending_intent["intent"] == "get_recommandation":
+                elif pending_intent["intent"] == "get_recommendation":
                     action_result = recommand_activity(pending_intent["user_name"])
                     action_taken = True
                 # Clear pending intent after handling
