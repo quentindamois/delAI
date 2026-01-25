@@ -194,6 +194,7 @@ def recommand_activity(studentID, top=3):
         ### compute the sumilarity between the user and the rest ###
         list_similary_activity = list(zip(cosine_similarity(array_input[:,:-1], row_student[:,:-1]), array_input[:,-1]))
         list_similary_activity.sort(key=lambda a: a[0])
+        list_similary_activity.sort(key=lambda a: a[0], reverse=True)
         tem_list_activity_recommanded = list()
         for i in range(top):
             list_from_ind = list_similary_activity[i][1].split("|")
