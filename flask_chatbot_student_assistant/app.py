@@ -282,7 +282,7 @@ keyword_dictionnary = {
             "assignment", "brief", "instructions", "manual"
         ]
     },
-    "get_recommandation":{
+    "get_recommendation":{
         "verb":["give", "recommend", "advise"],
         "noun":["activity", "occupation"]
     }
@@ -416,7 +416,7 @@ def answer_ask():
         elif detected_intent == "get_information":
             detected_intent_pretty = "retrieve information"
             intent_val = True
-        elif detected_intent == "get_recommandation":
+        elif detected_intent == "get_recommendation":
             detected_intent_pretty = "ask for a recommandation"
             intent_val = True
 
