@@ -20,6 +20,7 @@ from email_sender import (
 )
 from content_moderation import detect_harmful_content, log_warning
 from calendar_manager import get_planning
+from recommend_activity import update_csv_activity, recommand_activity
 load_dotenv()
 
 # Configure logging to both console and file
@@ -198,6 +199,10 @@ keyword_dictionnary = {
         "verb":["show", "get", "check", "see"],
         "noun":["schedule", "planning", "calendar", "class", "classes", "course", "courses", "agenda", "timetable"]
     },
+    "get_recommendation":{
+        "verb":["give", "recommend", "advise"],
+        "noun":["activity", "occupation"]
+    }
 }
 
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"
@@ -286,6 +291,7 @@ def answer_ask():
         log_warning(user_id, user_name, user_input, category, logger)
         return f"Your message was flagged as inappropriate ({category}). Please keep the conversation respectful and safe."
     
+    update_csv_activity(user_input, user_name)
     with model_lock:
         global pending_intent
 
@@ -328,6 +334,9 @@ def answer_ask():
                 elif pending_intent["intent"] == "planning_information":
                     action_result = get_planning(pending_intent["text"])
                     action_taken = True
+                elif pending_intent["intent"] == "get_recommendation":
+                    action_result = recommand_activity(pending_intent["user_name"])
+                    action_taken = True
                 # Clear pending intent after handling
                 pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None, "teacher": None}
             elif normalized_input in confirm_no:
@@ -353,6 +362,9 @@ def answer_ask():
             intent_val = True
         elif detected_intent == "planning_information":
             detected_intent_pretty = "check your schedule"
+            intent_val = True
+        elif detected_intent == "get_recommendation":
+            detected_intent_pretty = "ask for a recommandation"
             intent_val = True
 
         # Prepare pending intent payload for the next user confirmation
@@ -451,8 +463,10 @@ def answer_ask():
             short_circuit_response = " ".join(action_result["message"].split(" ")[1:])
             short_circuit_response += " \nLet me know if you need me to send it to your teacher !"
 
+        if action_taken and action_result is not None and action_result.get('action') in ["recommendation_failed", "recommendation_success"]:
+            short_circuit_response = " ".join(action_result["message"].split(" ")[1:])
+            
         if action_taken and action_result is not None:
-
             system_content.append(
                 f"\nAction taken: {action_result['action']}. "
                 f"Result message: {action_result['message']}. "
