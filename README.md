@@ -41,7 +41,7 @@ https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF
 https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF
 
 
-Add a credential to the google service account with the google sheet api activated in the folder *flask_chatbot_student_assistant*
+Add a credential to the google service account with the Google Sheets api activated in the folder *flask_chatbot_student_assistant*
 
 In two terminals run :
 - start-discord-bot.ps1 
