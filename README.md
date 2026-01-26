@@ -37,6 +37,7 @@ They must be:
 You can download them from hugging face at following address:
 
 https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF
+
 https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF
 
 
