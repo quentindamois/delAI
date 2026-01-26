@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 from llama_cpp import Llama
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = BASE_DIR / "flask_chatbot_student_assistant" / "models" / "nomic-embed-text-v1.5.Q4_K_M.gguf"
 CSV_FILE = "conversation_log.csv"
 
