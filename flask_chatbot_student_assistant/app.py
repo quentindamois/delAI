@@ -343,7 +343,7 @@ def answer_ask():
                     previous_user_input_for_action = pending_intent.get("text", user_input)
                     action_taken = True
                 elif pending_intent["intent"] == "get_recommendation":
-                    action_result = recommand_activity(pending_intent["user_name"])
+                    action_result = recommand_activity(user_id)
                     action_taken = True
                 # Clear pending intent after handling
                 pending_intent = {"intent": None, "pretty": None, "text": None, "user_name": None, "teacher": None}
