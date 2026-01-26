@@ -136,7 +136,7 @@ dict_regex_extract_binary_value = gen_list_regex_binary_extract(dict_extract_bin
 dict_regex_extract_value = {
     "Absences": ([r"[Aa]+[Bb]+[Ss]+[Ee]+[nN]+[Tt]+\s+(?:[fF]+[oO]+[rR]+\s+)?(?P<Absences>\d+)", r"(?P<Absences>\d+)\s*[Aa]+[Bb]+[Ss]+[Ee]+[nN]+[cC]+[eE]+[Ss]*"], lambda a: int(a)),
     "Age": ([r"(?P<Age>\d+)\s+[Yy]+[Ee]+[Aa]+[Rr]+[Ss]*\s+[Oo]+[Ll]+[dD]+", r"[Aa]*[mM]+\s+(?P<Age>\d+)"], lambda a: int(a)),
-    "StudyTimeWeekly": ([r"(?:[sS]+[Tt]+[Uu]+[Dd]+)(?:[Yy]+|[Ii]+[Ee]+[Dd]+)\s+(?:[fF]+[oO]+[rR]+|[Dd]+[Uu]+[Rr]+[Ii]+[nN]+[gG]+)?\s+(?:[eE]+[vV]+[eE]+[rR]+[yY]+\s+[wW]+[eE]+[kK]+\s+)?(?P<StudyTimeWeekly>\d+\.?\d*)"], lambda a: float(a)),
+    "StudyTimeWeekly": ([r"(?:[sS]+[Tt]+[Uu]+[Dd]+)(?:[Yy]+|[Ii]+[Ee]+[Dd]+)\s+(?:[fF]+[oO]+[rR]+|[Dd]+[Uu]+[Rr]+[Ii]+[nN]+[gG]+)?\s*(?:[eE]+[vV]+[eE]+[rR]+[yY]+\s+[wW]+[eE]+[kK]+\s+)?(?P<StudyTimeWeekly>\d+\.?\d*)"], lambda a: float(a)),
     "GPA":([r"[Gg]+[Pp]+[Aa]+\s+(?:[Ii]+[Ss]+|[Ee]+[Qq]+[Uu]+[Aa]+[Ll]+\s+[Tt]+[Oo]+|[Oo]+[Ff]+)\s+(?P<GPA>\d+\.?\d*)"], lambda a: float(a)),
 }
 
