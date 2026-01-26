@@ -122,6 +122,7 @@ async def fetch_llm_response(message_text: str, user_id: str, display_name: str)
                 "user_name": display_name,
                 "memory_context": memory_context,
                 "user_context": user_context,
+                "user_id":user_id
             },
         )
         response.raise_for_status()
