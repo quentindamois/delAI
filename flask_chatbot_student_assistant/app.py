@@ -185,6 +185,8 @@ def retrieve_information_request(user_input: str, user_name: str) -> dict:
         "results": formatted_results
     }
 
+
+### This is the dictionnary of the different keyword for each intent
 keyword_dictionnary = {
     "send_email":{"verb":["write", "send"], "noun":["teacher", "question", "help"]},
     "make_group":{"verb":["make", "form", "assemble"], "adj":["final project", "project", "presentation"], "noun":["group", "group", "team", "teams", "groups"]},
@@ -206,12 +208,16 @@ keyword_dictionnary = {
     }
 }
 
+### This function is used to create a regex for a single keyword
 convert_morph_letter = lambda a: r"\s+" if a == " "  else rf"[{a.lower()}{a.upper()}]+"
 
+
 def convert_word_regex(sentence):
+    """Convert a string word into a regex version"""
     return rf"\b{r''.join(list(map(convert_morph_letter, map(lambda b: b[0], filter(lambda a:  sentence[a[1]] == a[0], zip(sentence, range(len(sentence))))))))}\b"
 
 def create_intent_regex(intent):
+    """Generate the regex used to detect one intent"""
     tem = list()
     for type_word in keyword_dictionnary[intent].keys():
         tem_list = list(map(lambda a : convert_word_regex(a), keyword_dictionnary[intent][type_word]))
@@ -219,13 +225,15 @@ def create_intent_regex(intent):
     keyword_dictionnary[intent] = r".*(:?" + "|".join(list(map(lambda c: rf"(?:{c})", map(lambda b: r"|".join(list(map(lambda a : r"(?:" + a + r")", tem[b:] +  tem[:b]))), range(len(tem)))))) + r").*"
 
 def gen_regex():
+    """Generate all of regexes for the intent detection"""
     for intent in keyword_dictionnary.keys():
         create_intent_regex(intent)
 
-
+### We call gen_regex to generate the regex used for intent detection ###
 gen_regex()
 
 def get_intent(text):
+    """Detect the intent of the text with regexes."""
     list_detected_intent =  list(filter(lambda a: re.search(keyword_dictionnary[a], text), keyword_dictionnary.keys()))
     logger.info(f"Intent detected: {list_detected_intent}")
     return "Unknown" if len(list_detected_intent) == 0 else list_detected_intent[0]
