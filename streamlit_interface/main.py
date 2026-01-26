@@ -140,7 +140,6 @@ def fetch_llm_response(message_text: str, user_id: str, display_name: str) -> st
                 "user_id":user_id
             },
         )
-    st.write(response)
     return response.text
 
 def gen_answer(text):
@@ -192,8 +191,6 @@ if prompt:
     historic_actual_message.append(prompt)
     tem = gen_answer(prompt)
     st.write(tem)
-    st.write(type(tem))
-    st.write(help(tem))
     historic_actual_message.append(tem)
 
 
