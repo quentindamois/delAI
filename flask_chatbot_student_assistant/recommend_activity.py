@@ -201,7 +201,7 @@ def get_list_update(text):
     """Create the list of column that have to be updated"""
     return get_bin_column(text) + get_value_column(text) + get_values_activies(text)
 
-# dataframe value update inpired from https://sqlpey.com/python/top-4-ways-to-update-row-values-in-pandas/#solution-3-the-power-of-update
+# dataframe value update taken from https://sqlpey.com/python/top-4-ways-to-update-row-values-in-pandas/#solution-1-using-loc-for-direct-updates
 
 def update_user_once(user_id, df, name_col, new_value):
     """update one column for one user"""
@@ -245,7 +245,7 @@ def update_csv_activity(text:str, user_id:str):
     df.to_csv(CSV_ACTIVITY, index=False)
 
 
-# dataframe concatenation based on the example from https://www.geeksforgeeks.org/pandas/how-to-add-one-row-in-an-existing-pandas-dataframe/
+# dataframe concatenation taken from https://www.geeksforgeeks.org/pandas/how-to-add-one-row-in-an-existing-pandas-dataframe/
 
 def add_user(user_id, df):
     ### verify to see if the id is inside of already added student id ###
